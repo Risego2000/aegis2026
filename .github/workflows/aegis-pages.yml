@@ -28,6 +28,8 @@ jobs:
         working-directory: frontend
         env:
           NEXT_PUBLIC_AEGIS_API: ${{ vars.AEGIS_API }}
+          # GitHub Pages publica en https://<usuario>.github.io/<repo>/
+          NEXT_BASE_PATH: /aegis2026
         run: |
           npm ci
           npm run build
