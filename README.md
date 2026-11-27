@@ -3,6 +3,9 @@
 Mapa en vivo de sucesos, tráfico aéreo y marítimo, trenes, satélites y cámaras
 públicas de todo el mundo, construido **sin claves de pago** y con datos abiertos.
 
+**[▶ Ver el mapa publicado](https://risego2000.github.io/aegis2026/)** — cliente
+estático en GitHub Pages apuntando a la API desde la variable `AEGIS_API`.
+
 ![estado](https://img.shields.io/badge/fuentes-15%20abiertas-35e0d0) ![licencia](https://img.shields.io/badge/licencia-MIT-informational)
 
 ## Qué muestra
@@ -56,6 +59,30 @@ estático (`frontend/site/`) desde el propio backend.
 ### Variables de entorno
 
 Todas son opcionales: la aplicación funciona sin ninguna. Ver `.env.example`.
+
+## Despliegue
+
+| Pieza | Dónde | Cómo |
+|---|---|---|
+| **Cliente** (mapa) | GitHub Pages · `https://risego2000.github.io/aegis2026/` | workflow `AEGIS · Pages`, se compila con `NEXT_BASE_PATH=/aegis2026` |
+| **API** (motor OSINT) | tu servidor o un túnel | `cd backend && python3 -m uvicorn app.main:app --port 8000` |
+
+El cliente publicado necesita saber dónde está la API: se configura en
+*Settings → Secrets and variables → Actions → **Variables** → `AEGIS_API`* con la
+URL pública del backend (por ejemplo `https://tu-tunel.trycloudflare.com`). Al
+cambiar la variable, lanza el workflow **AEGIS · Pages** (`workflow_dispatch`) y
+el sitio se recompila apuntando a la nueva URL. Sin la variable, el sitio carga
+la interfaz y muestra el aviso de que la API no responde.
+
+El backend ya envía `Access-Control-Allow-Origin: *` (configurable con
+`CORS_ORIGINS`), así que no hace falta tocar nada más.
+
+Para exponer el backend por HTTPS con un túnel público sin cuenta:
+
+```bash
+bash scripts/tunnel.sh        # cloudflared
+bash scripts/tunnel_backup.sh # ssh a localhost.run
+```
 
 ## Estructura
 
