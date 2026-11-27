@@ -14,7 +14,7 @@ type Ctx = CanvasRenderingContext2D;
 const SIZE = 24;
 const PIXEL_RATIO = 2;
 
-function makeCanvas(draw: (g: Ctx) => void, size = SIZE): ImageData {
+function makeCanvas(draw: (g: Ctx) => void, size = SIZE, outline = false): ImageData {
   const cv = document.createElement("canvas");
   cv.width = size * PIXEL_RATIO;
   cv.height = size * PIXEL_RATIO;
@@ -28,7 +28,8 @@ function makeCanvas(draw: (g: Ctx) => void, size = SIZE): ImageData {
   g.lineJoin = "round";
   g.lineCap = "round";
   draw(g);
-  g.fill();
+  // Los iconos de contorno (el tren) no se rellenan: el trazo es la silueta.
+  if (!outline) g.fill();
   g.stroke();
   // El lienzo está al doble de resolución (PIXEL_RATIO): hay que devolver los
   // 48×48 físicos completos. Recortar `size` dejaba solo la esquina superior
@@ -162,20 +163,30 @@ function drawSatellite(g: Ctx) {
   g.closePath();
 }
 
-/** Tren: locomotora con ventanas y ruedas. */
+/** Tren: el mismo pictograma de la leyenda, dibujado como contorno. */
 function drawTrain(g: Ctx) {
+  g.lineWidth = 2;
   g.beginPath();
-  g.moveTo(4, 5);
-  g.lineTo(20, 5);
-  g.lineTo(21.6, 9);
-  g.lineTo(21.6, 17);
-  g.lineTo(2.4, 17);
-  g.lineTo(2.4, 9);
+  // vagón redondeado (5,3 → 19,19, radio 4)
+  g.moveTo(9, 3);
+  g.lineTo(15, 3);
+  g.quadraticCurveTo(19, 3, 19, 7);
+  g.lineTo(19, 15);
+  g.quadraticCurveTo(19, 19, 15, 19);
+  g.lineTo(9, 19);
+  g.quadraticCurveTo(5, 19, 5, 15);
+  g.lineTo(5, 7);
+  g.quadraticCurveTo(5, 3, 9, 3);
   g.closePath();
-  g.rect(5.2, 7.2, 4.4, 3.6);
-  g.rect(14.4, 7.2, 4.4, 3.6);
-  g.arc(7.2, 18.4, 1.9, 0, 2 * PI);
-  g.arc(16.8, 18.4, 1.9, 0, 2 * PI);
+  // franja, ventanas y patines
+  g.moveTo(5, 11); g.lineTo(19, 11);
+  g.moveTo(8, 7); g.lineTo(11, 7);
+  g.moveTo(13, 7); g.lineTo(16, 7);
+  g.moveTo(8, 19); g.lineTo(6, 22);
+  g.moveTo(16, 19); g.lineTo(18, 22);
+  // faros
+  g.moveTo(9.7, 15); g.arc(9, 15, 0.7, 0, 2 * PI);
+  g.moveTo(15.7, 15); g.arc(15, 15, 0.7, 0, 2 * PI);
 }
 
 /** Metro / cercanías: tren redondeado, distinto del de larga distancia. */
@@ -433,7 +444,7 @@ const DRAWERS: Record<string, (g: Ctx) => void> = {
 /** Devuelve el ImageData listo para `map.addImage(nombre, data, { sdf: true })`. */
 export function categoryIconData(name: string): ImageData {
   const draw = DRAWERS[name] || DRAWERS.pin;
-  return makeCanvas(draw);
+  return makeCanvas(draw, SIZE, name === "train");
 }
 
 /** Nombre de icono de un suceso a partir de su categoría. */

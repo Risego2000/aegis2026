@@ -78,6 +78,17 @@ def test_canal_en_vivo_responde(client):
     assert "cursor" in data
 
 
+def test_poll_senala_sucesos_nuevos(client):
+    """Un suceso nuevo debe pedir al cliente que recargue la capa events."""
+    from app.livehub import HUB
+
+    before = HUB.event_seq
+    HUB.push_events([{"id": "test:evento", "title": "evento de prueba"}])
+    data = client.get(f"/api/poll?since={before}&as={HUB.alert_seq}&wait=0").json()
+    assert "events" in data["layers"]
+    assert data["cursor"] > before
+
+
 def test_fences_crud(client):
     created = client.post("/api/fences", json={"name": "test", "lat": 40.4, "lon": -3.7, "radius_m": 5000})
     assert created.status_code == 200

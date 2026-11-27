@@ -15,6 +15,8 @@ import {
   SEVERITY_COLOR as severityColor, sourceEs, timeAgo,
 } from "@/lib/format";
 import { apiUrl } from "@/lib/api";
+import { distanceKm } from "@/lib/geo";
+import { eventFacts, eventSummary } from "@/lib/eventFacts";
 
 export type Tab = "actor" | "camera" | "detail" | "place" | "briefing" | "threats" | "alerts" | "sources" | "analyst";
 
@@ -38,6 +40,8 @@ type Props = {
   onDownloadBriefing: () => void;
   alerts: Alert[];
   alertsCount: number;
+  /** Centro del mapa: referencia para ordenar amenazas y avisos por distancia. */
+  origin: { lat: number; lon: number };
   health: Health | null;
   config: AppConfig | null;
   onTriggerSource: (name: string) => void;
@@ -72,16 +76,18 @@ type Props = {
   onPickThreat: (id: string) => void;
   threatHours: number;
   onThreatWindow: (h: number) => void;
+  /** cambia cuando llega un suceso nuevo: refresca Amenazas sin esperar al ciclo */
+  eventsTick: number;
 };
 
 const TABS: { key: Tab; label: string; icon: IconName; hint: string }[] = [
   { key: "place", label: "Lugar", icon: "pin", hint: "Todo lo que hay alrededor del punto que has pulsado" },
-  { key: "threats", label: "Amenazas", icon: "warning", hint: "Sucesos que amenazan a la población o generan alarma, ordenados por prioridad" },
+  { key: "threats", label: "Amenazas", icon: "warning", hint: "Sucesos que amenazan a la población, de más cerca a más lejos" },
   { key: "detail", label: "Suceso", icon: "event", hint: "Ficha completa del suceso seleccionado" },
   { key: "actor", label: "Elemento", icon: "plane", hint: "Avión, barco o satélite seleccionado" },
   { key: "camera", label: "Cámara", icon: "camera", hint: "Visor de la cámara pública seleccionada" },
   { key: "briefing", label: "Informe", icon: "report", hint: "Informe redactado con los datos de la zona" },
-  { key: "alerts", label: "Alertas", icon: "bell", hint: "Avisos de las zonas vigiladas" },
+  { key: "alerts", label: "Alertas", icon: "bell", hint: "Avisos de las zonas vigiladas, de más cerca a más lejos" },
   { key: "sources", label: "Fuentes", icon: "sources", hint: "Estado y detalle de las 25 fuentes abiertas" },
   { key: "analyst", label: "Analista", icon: "analyst", hint: "SITREP, patrones, casos con cadena de custodia, grafo y reproducción" },
 ];
@@ -106,10 +112,26 @@ export default function RightPanel(p: Props) {
     }
   }, [p.tab]);
 
-  const filteredAlerts = useMemo(
-    () => (onlyCritical ? p.alerts.filter((a) => a.severity === "critical" || a.event_type === "rule") : p.alerts),
-    [p.alerts, onlyCritical]
-  );
+  const filteredAlerts = useMemo(() => {
+    const list = onlyCritical ? p.alerts.filter((a) => a.severity === "critical" || a.event_type === "rule") : p.alerts;
+    return list
+      .map((a) => {
+        const lat = a.lat == null ? NaN : Number(a.lat);
+        const lon = a.lon == null ? NaN : Number(a.lon);
+        return {
+          ...a,
+          distanceKm: Number.isFinite(lat) && Number.isFinite(lon)
+            ? distanceKm(p.origin.lat, p.origin.lon, lat, lon)
+            : null,
+        };
+      })
+      .sort((a, b) => {
+        if (a.distanceKm == null && b.distanceKm == null) return Date.parse(b.ts) - Date.parse(a.ts);
+        if (a.distanceKm == null) return 1;
+        if (b.distanceKm == null) return -1;
+        return a.distanceKm - b.distanceKm;
+      });
+  }, [p.alerts, onlyCritical, p.origin.lat, p.origin.lon]);
 
   const criticalAlerts = p.alerts.filter((a) => a.severity === "critical").length;
   const ruleAlerts = p.alerts.filter((a) => a.event_type === "rule").length;
@@ -336,7 +358,15 @@ export default function RightPanel(p: Props) {
           </div>
         )}
 
-        {p.tab === "threats" && <ThreatsPanel onPick={p.onPickThreat} hourWindow={p.threatHours} onWindow={p.onThreatWindow} />}
+        {p.tab === "threats" && (
+          <ThreatsPanel
+            onPick={p.onPickThreat}
+            hourWindow={p.threatHours}
+            onWindow={p.onThreatWindow}
+            liveTick={p.eventsTick}
+            origin={p.origin}
+          />
+        )}
 
         {p.tab === "alerts" && (
           <div>
@@ -344,8 +374,13 @@ export default function RightPanel(p: Props) {
               icon="bell"
               eyebrow="Zonas vigiladas"
               title="Avisos"
-              subtitle="Entradas y salidas de aeronaves, buques o sucesos en las zonas que has dibujado."
-              meta={<span>{p.alerts.length} avisos guardados</span>}
+              subtitle="Entradas y salidas de aeronaves, buques o sucesos en las zonas que has dibujado, de más cerca a más lejos del centro del mapa."
+              meta={
+                <>
+                  <span>{p.alerts.length} avisos · histórico + en vivo</span>
+                  <span>se actualiza al llegar</span>
+                </>
+              }
               actions={
                 <button className={`chip ${onlyCritical ? "active" : ""}`} onClick={() => setOnlyCritical(!onlyCritical)}>
                   solo críticas
@@ -381,6 +416,7 @@ export default function RightPanel(p: Props) {
                   <div className="alert-msg">{a.message}</div>
                   <div className="alert-msg" style={{ color: "var(--text-faint)" }}>
                     {a.fence_name || (a.fence_id ?? "global")} · {a.actor_type} · {a.event_type}
+                    {a.distanceKm != null ? ` · a ${fmtDistance(a.distanceKm * 1000)}` : ""}
                   </div>
                 </div>
               ))}
@@ -516,6 +552,10 @@ function EventDetail(p: Props) {
   const admiraltyWhy = ev.grading ? String(ev.grading) : "";
   const tlp = ev.tlp ? String(ev.tlp) : "";
   const when = fechaExacta(ev.event_time);
+  const firstSeen = fechaExacta(ev.first_seen);
+  const updated = fechaExacta(ev.updated_at);
+  const summary = eventSummary(ev);
+  const facts = eventFacts(ev);
   const country = ev.country_es ?? ev.country ?? "";
   const coords = (p.selected?.geometry as any)?.coordinates ?? [];
   const evLat = Number(ev.lat ?? coords[1]);
@@ -544,8 +584,8 @@ function EventDetail(p: Props) {
           <span>{sourceList.length > 1 ? `${sourceList.length} fuentes` : "una fuente"} · {ev.mentions ?? 1} menciones</span>
         </div>
 
-        {ev.summary && (
-          <p className="detail-lede" style={{ marginBottom: 12 }}>{ev.summary}</p>
+        {summary && (
+          <p className="detail-lede" style={{ marginBottom: 12 }}>{summary}</p>
         )}
 
         <SummaryStrip
@@ -555,6 +595,30 @@ function EventDetail(p: Props) {
             { label: "Fuentes", value: sourceList.length || 1, hint: "Fuentes que confirman el suceso" },
           ]}
         />
+
+        {facts.length > 0 && (
+          <PanelSection
+            title="Qué ocurrió"
+            count={`${facts.length} datos`}
+            hint="Datos concretos publicados por la fuente"
+            defaultOpen
+          >
+            <dl className="kv">
+              {facts.map((fact) => (
+                <div key={fact.label} style={{ display: "contents" }}>
+                  <dt>{fact.label}</dt>
+                  <dd>{fact.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </PanelSection>
+        )}
+
+        {!facts.length && !summary && (
+          <div className="cov-note" style={{ margin: "0 14px 12px" }}>
+            La fuente solo publica el titular. Abre el enlace original para ampliar la información.
+          </div>
+        )}
 
         <div className="pn-tools">
           <div className="btn-row" style={{ flexWrap: "wrap" }}>
@@ -603,6 +667,16 @@ function EventDetail(p: Props) {
               <><dt>Profundidad</dt><dd>{Number(ev.depth_km).toLocaleString("es-ES", { maximumFractionDigits: 1 })} km</dd></>
             )}
             <dt>Fuentes</dt><dd>{sourceList.map(sourceEs).join(" · ") || sourceEs(ev.source)}</dd>
+          </dl>
+        </PanelSection>
+
+        <PanelSection title="Cronología" count={ev.mentions ? `${ev.mentions} ${Number(ev.mentions) === 1 ? "mención" : "menciones"}` : "seguimiento"} hint="Cuándo apareció y cuándo se actualizó">
+          <dl className="kv">
+            <dt>Ocurrió</dt><dd>{when.local}</dd>
+            <dt>Primera detección</dt><dd>{firstSeen.local}</dd>
+            <dt>Última actualización</dt><dd>{updated.local}</dd>
+            <dt>Antigüedad</dt><dd>hace {timeAgo(ev.event_time)}</dd>
+            <dt>Menciones</dt><dd>{ev.mentions ?? 1}</dd>
           </dl>
         </PanelSection>
 
@@ -765,6 +839,8 @@ type ThreatItem = {
   country?: string;
   summary?: string;
   event_time: string;
+  lat?: number | null;
+  lon?: number | null;
   sources_count?: number;
   priority: { score: number; level: string; reasons: string[]; population_threat: boolean };
 };
@@ -792,32 +868,64 @@ function reasonEs(reason: string) {
   return REASON_ES[reason.toLowerCase()] ?? reason;
 }
 
-function ThreatsPanel({ onPick, hourWindow, onWindow }: { onPick: (id: string) => void; hourWindow: number; onWindow: (h: number) => void }) {
+function ThreatsPanel({
+  onPick, hourWindow, onWindow, liveTick, origin,
+}: {
+  onPick: (id: string) => void;
+  hourWindow: number;
+  onWindow: (h: number) => void;
+  liveTick: number;
+  origin: { lat: number; lon: number };
+}) {
   const [items, setItems] = useState<ThreatItem[]>([]);
   const [meta, setMeta] = useState<{ count: number; considered: number; levels: Record<string, number> } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const [minScore, setMinScore] = useState(5.5);
+  const requestId = useRef(0);
 
   useEffect(() => {
     let alive = true;
     const cargar = () => {
+      const id = ++requestId.current;
       setLoading(true);
       fetch(apiUrl(`/api/events/priority?hours=${hourWindow}&min_score=${minScore}&limit=250`))
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => {
-          if (!alive || !d) return;
+          if (!alive || id !== requestId.current || !d) return;
           setItems(d.events || []);
           setMeta({ count: d.count, considered: d.considered, levels: d.levels || {} });
+          setUpdatedAt(Date.now());
           setLoading(false);
         })
-        .catch(() => { if (alive) setLoading(false); });
+        .catch(() => { if (alive && id === requestId.current) setLoading(false); });
     };
     cargar();
-    const t = setInterval(cargar, 45000);
+    // El push de sucesos refresca al instante; este ciclo es la red de
+    // seguridad para cambios de puntuación o ventanas sin eventos nuevos.
+    const t = setInterval(cargar, 20_000);
     return () => { alive = false; clearInterval(t); };
-  }, [hourWindow, minScore]);
+  }, [hourWindow, minScore, liveTick]);
 
   const color = (s: number) => (s >= 7.5 ? "#ff3d71" : s >= 5.5 ? "#ff9f0a" : s >= 3.5 ? "#ffd60a" : "#8fa6c4");
+
+  const sortedItems = useMemo(() => items
+    .map((it) => {
+      const lat = it.lat == null ? NaN : Number(it.lat);
+      const lon = it.lon == null ? NaN : Number(it.lon);
+      return {
+        ...it,
+        distanceKm: Number.isFinite(lat) && Number.isFinite(lon)
+          ? distanceKm(origin.lat, origin.lon, lat, lon)
+          : null,
+      };
+    })
+    .sort((a, b) => {
+      if (a.distanceKm == null && b.distanceKm == null) return b.priority.score - a.priority.score;
+      if (a.distanceKm == null) return 1;
+      if (b.distanceKm == null) return -1;
+      return a.distanceKm - b.distanceKm;
+    }), [items, origin.lat, origin.lon]);
 
   return (
     <div>
@@ -825,11 +933,17 @@ function ThreatsPanel({ onPick, hourWindow, onWindow }: { onPick: (id: string) =
         icon="warning"
         eyebrow="Prioridad"
         title="Amenazas"
-        subtitle="Sucesos con riesgo para las personas, ordenados por gravedad, corroboración y palabras de riesgo del titular."
+        subtitle="Sucesos con riesgo para las personas, ordenados de más cerca a más lejos del centro del mapa."
         meta={
           <>
-            <span>{loading ? "actualizando…" : "se refresca cada 45 s"}</span>
-            <span>{minScore === 7.5 ? "solo críticas" : minScore === 5.5 ? "alta o superior" : "media o superior"}</span>
+            <span>
+              {loading
+                ? "actualizando…"
+                : updatedAt
+                  ? `en vivo · hace ${timeAgo(new Date(updatedAt).toISOString())}`
+                  : "en vivo"}
+            </span>
+            <span>{hourWindow === 24 ? "24 h" : hourWindow === 168 ? "7 días" : "30 días"} de histórico · {minScore === 7.5 ? "solo críticas" : minScore === 5.5 ? "alta o superior" : "media o superior"}</span>
           </>
         }
       />
@@ -871,7 +985,7 @@ function ThreatsPanel({ onPick, hourWindow, onWindow }: { onPick: (id: string) =
             Baja el nivel («media») o amplía la ventana temporal.
           </div>
         )}
-        {items.map((it) => (
+        {sortedItems.map((it) => (
           <button
             key={it.id}
             className="threat-row"
@@ -886,7 +1000,9 @@ function ThreatsPanel({ onPick, hourWindow, onWindow }: { onPick: (id: string) =
               <span className="threat-meta tiny faint">
                 {it.priority.level} · {it.country || "sin país"} · {timeAgo(it.event_time)} ·{" "}
                 {it.sources_count ?? 1} fuente{(it.sources_count ?? 1) > 1 ? "s" : ""}
+                {it.distanceKm != null ? ` · a ${fmtDistance(it.distanceKm * 1000)}` : ""}
               </span>
+              {it.summary && <span className="threat-summary">{it.summary}</span>}
               {it.priority.reasons?.length ? (
                 <span className="tiny" style={{ display: "block", marginTop: 3, color: "var(--text-faint)" }}>
                   Motivos: {it.priority.reasons.map(reasonEs).join(" · ")}

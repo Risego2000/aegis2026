@@ -82,6 +82,30 @@ make smoke     # 29 comprobaciones contra un servidor en marcha
   sondea cada 30 minutos la API a la que apunta; se pone en rojo si el fichero
   está vacío o la API no responde.
 
+### Navegador remoto (Browserless)
+
+`scripts/check_browserless.py` es el flujo de Playwright del proyecto contra
+[Browserless](https://docs.browserless.io/baas/quick-start): se conecta por CDP a
+un Chrome gestionado y abre `https://example.com/`, sin lanzar ningún navegador
+en local. Sirve para validar el token y la salida a Internet de la máquina.
+
+```bash
+# 1. token gratuito en https://browserless.io/account/ (cópialo del panel)
+# 2. guárdalo en .env (ignorado por git): BROWSERLESS_TOKEN=tu_token
+# 3. instala la dependencia y ejecuta el ejemplo
+make install
+make browserless
+# o directamente, con otro endpoint o página:
+.venv/bin/python scripts/check_browserless.py --url https://example.org
+```
+
+Salida esperada: `HTTP 200 · https://example.com/`, el título `Example Domain` y
+`Browserless respondió`. Códigos de salida: `0` correcto, `1` falta el token o la
+página no carga, `2` no se puede conectar al servicio. La región por defecto es
+`production-sfo`; se cambia con `--endpoint` o `BROWSERLESS_ENDPOINT` (por
+ejemplo `wss://production-lon.browserless.io`). El token se lee siempre del
+entorno y el script no lo imprime.
+
 ### Repuntar la API sin recompilar
 
 El cliente resuelve el origen de la API en este orden:

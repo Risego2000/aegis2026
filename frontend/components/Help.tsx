@@ -57,8 +57,8 @@ export default function Help({ open, onClose, onOpenLayers, hours }: Props) {
             <div className="help-card">
               <h4><Icon name="layers" size={17} /> Capas y filtros</h4>
               <p>
-                La barra <b>Explorar</b>, sobre el mapa, cambia entre vistas y enciende o apaga capas al
-                instante: sucesos, aeronaves, buques, trenes, cámaras, satélites, aire, lugares y zonas.
+                El control <b>Capas</b>, sobre el mapa, enciende o apaga al instante
+                sucesos, aeronaves, buques, trenes, cámaras, satélites, aire, lugares y zonas.
               </p>
               <p>
                 El botón de arriba a la izquierda abre el <b>centro de control</b> completo: capas (con
@@ -128,6 +128,12 @@ export default function Help({ open, onClose, onOpenLayers, hours }: Props) {
             mundiales; el tráfico aéreo depende de dónde haya receptores; el AIS abierto cubre sobre todo el
             Báltico; las cámaras, cinco redes. Cuando no hay datos de una zona, la app lo dice en lugar de
             rellenar el hueco.
+          </p>
+
+          <h3>Créditos de cartografía y datos</h3>
+          <p className="dim" style={{ fontSize: 12, lineHeight: 1.6, margin: 0 }}>
+            Cartografía: Esri, HERE, OpenStreetMap, Maxar, GEBCO y Natural Earth.
+            Datos: colaboradores de OpenStreetMap, adsb.lol, USGS, GDACS, GDELT y Celestrak.
           </p>
         </div>
 

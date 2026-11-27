@@ -155,7 +155,7 @@ export const api = {
     json<{ ok: boolean; fence: Fence }>("/api/fences", { method: "POST", body: JSON.stringify(body) }),
   deleteFence: (id: string) => json<{ ok: boolean }>(`/api/fences/${encodeURIComponent(id)}`, { method: "DELETE" }),
 
-  alerts: () => json<{ alerts: Alert[]; counters: Record<string, number> }>("/api/alerts?limit=120"),
+  alerts: () => json<{ alerts: Alert[]; live?: Alert[]; counters: Record<string, number> }>("/api/alerts?limit=250"),
   briefing: (body: { bbox: number[]; hours: number; categories?: string[]; window?: string; use_llm?: boolean }) =>
     json<Briefing>("/api/ai/briefing", { method: "POST", body: JSON.stringify(body) }),
   aiStatus: () => json<{ provider: string; model: string; available: boolean; detail: string }>("/api/ai/status"),

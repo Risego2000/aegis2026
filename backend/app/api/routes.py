@@ -1231,21 +1231,28 @@ async def where(
             cams.append(cam)
 
     # Incidencias de tráfico DGT: los eventos de la fuente «dgt» llevan la
-    # carretera, el punto kilométrico y la causa en el payload.
+    # carretera, el punto kilométrico y la causa en el payload. La causa se
+    # traduce aquí para que la lista muestre «vehículo averiado» y no el código
+    # crudo `vehicleObstruction`.
+    from ..ingest.dgt import CAUSE_ES
+
     traffic: list[dict[str, Any]] = []
     for d, ev in near_events:
         if ev.source != "dgt":
             continue
         pay = ev.payload if isinstance(ev.payload, dict) else {}
+        cause_raw = pay.get("causa") or pay.get("cause") or ""
+        cause = CAUSE_ES.get(str(cause_raw), str(cause_raw) or ev.category)
         traffic.append({
             "id": ev.id,
-            "title": pay.get("title") or ev.title,
+            "title": ev.title,
             "sub": " · ".join(str(x) for x in (
-                pay.get("road") or pay.get("roadName"),
+                pay.get("carretera") or pay.get("road") or pay.get("roadName"),
                 f"km {pay.get('km')}" if pay.get("km") not in (None, "") else "",
-                pay.get("cause") or ev.category,
+                cause,
                 f"{_num_es(d / 1000)} km",
             ) if x),
+            "summary": ev.summary or "",
             "lat": ev.lat,
             "lon": ev.lon,
             "distance_km": round(d / 1000, 1),
@@ -1265,6 +1272,7 @@ async def where(
             ),
             "category": ev.category,
             "source": ev.source,
+            "summary": ev.summary or "",
             "lat": ev.lat,
             "lon": ev.lon,
             "distance_km": round(d / 1000, 1),

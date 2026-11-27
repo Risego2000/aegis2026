@@ -34,7 +34,7 @@ export default function Timeline({ events, hours, setHours, onSelect, alertsCoun
     () =>
       [...events]
         .sort((a, b) => new Date(b.properties.event_time).getTime() - new Date(a.properties.event_time).getTime())
-        .slice(0, 6),
+        .slice(0, 12),
     [events]
   );
 
@@ -67,23 +67,40 @@ export default function Timeline({ events, hours, setHours, onSelect, alertsCoun
         ))}
       </div>
 
-      <div className="ticker">
+      <div className="ticker" role="marquee" aria-label="Últimos sucesos">
         <span className="ticker-label">ÚLTIMOS</span>
-        <div className="ticker-text">
-          {latest.map((f, i) => (
-            <span key={f.properties.id}>
-              {i > 0 && <span className="faint"> · </span>}
-              <button
-                className="ticker-event"
-                style={{ color: categoryMeta(f.properties.category).color }}
-                onClick={() => onSelect(f)}
-                title={f.properties.title}
-              >
-                {f.properties.title.slice(0, 74)} ({timeAgo(f.properties.event_time)})
-              </button>
-            </span>
-          ))}
-          {latest.length === 0 && <span className="faint">sin eventos en la ventana del mapa</span>}
+        <div className="ticker-viewport">
+          {latest.length === 0 ? (
+            <span className="faint">sin eventos en la ventana del mapa</span>
+          ) : (
+            <div
+              className="ticker-track"
+              style={{ animationDuration: `${Math.max(30, latest.length * 8)}s` }}
+            >
+              {[0, 1].map((copy) => (
+                <div
+                  className="ticker-group"
+                  key={copy}
+                  aria-hidden={copy === 1 ? true : undefined}
+                >
+                  {latest.map((f) => (
+                    <span className="ticker-item" key={`${copy}-${f.properties.id}`}>
+                      <button
+                        className="ticker-event"
+                        style={{ color: categoryMeta(f.properties.category).color }}
+                        onClick={() => onSelect(f)}
+                        title={f.properties.title}
+                        tabIndex={copy === 1 ? -1 : undefined}
+                      >
+                        {f.properties.title} ({timeAgo(f.properties.event_time)})
+                      </button>
+                      <span className="ticker-sep" aria-hidden="true">◆</span>
+                    </span>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

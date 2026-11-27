@@ -17,6 +17,7 @@ import { categoryMeta, timeAgo } from "@/lib/format";
 import { Icon } from "@/components/Icon";
 import { PanelHeader, PanelSection, SummaryStrip } from "@/components/PanelUI";
 import type { ActorKind } from "@/lib/types";
+import { eventSummary } from "@/lib/eventFacts";
 
 export type PlaceData = {
   lat: number;
@@ -61,6 +62,7 @@ export type PlaceRow = {
   severity?: string;
   distance_km?: number;
   ts?: string;
+  summary?: string;
 };
 
 type Props = {
@@ -310,6 +312,9 @@ export default function PlacePanel(p: Props) {
                   <div className="event-main">
                     <div className="event-title">{row.title || row.id}</div>
                     {metaDe(s.key, row) && <div className="event-sub">{metaDe(s.key, row)}</div>}
+                    {row.summary && s.key === "events" && (
+                      <div className="event-summary">{eventSummary(row)}</div>
+                    )}
                   </div>
                   <span className="tiny faint">›</span>
                 </div>

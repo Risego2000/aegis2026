@@ -424,36 +424,12 @@ export default function MapView(props: Props) {
       fijar(".maplibregl-ctrl-zoom-in", "Acercar");
       fijar(".maplibregl-ctrl-zoom-out", "Alejar");
       fijar(".maplibregl-ctrl-compass", "Arrastra para girar el mapa; pulsa para volver al norte");
-      fijar(".maplibregl-ctrl-attrib-button", "Mostrar u ocultar la atribución del mapa");
       fijar(".maplibregl-ctrl-fullscreen", "Pantalla completa");
     };
     traducirControles();
     map.on("rotate", traducirControles);
     map.on("load", traducirControles);
     map.addControl(new maplibregl.ScaleControl({ maxWidth: 90, unit: "metric" }), "bottom-right");
-    map.addControl(
-      new maplibregl.AttributionControl({
-        compact: true,
-        customAttribution:
-          "© colaboradores de OpenStreetMap · Esri · Natural Earth · adsb.lol · USGS · GDACS · GDELT · Celestrak",
-      }),
-      "bottom-right"
-    );
-
-    /* La atribución nace abierta y en móvil se comía la leyenda y las
-       herramientas. Se deja como un botón «i»; al pulsarlo se abre su panel. */
-    const compactAttribution = () => {
-      if (!window.matchMedia("(max-width: 760px)").matches) return;
-      const el = map
-        .getContainer()
-        .querySelector<HTMLDetailsElement>(".maplibregl-ctrl-attrib");
-      el?.removeAttribute("open");
-      el?.classList.remove("maplibregl-compact-show");
-    };
-    compactAttribution();
-    window.setTimeout(compactAttribution, 0);
-    map.on("load", compactAttribution);
-    map.on("resize", compactAttribution);
 
     map.on("load", () => {
       // --- icons ---
@@ -517,7 +493,6 @@ export default function MapView(props: Props) {
           tiles: [`/api/tiles/${id}/{z}/{x}/{y}.${spec.ext}`],
           tileSize: 256,
           maxzoom: spec.maxzoom,
-          attribution: "Esri · HERE · OpenStreetMap · Maxar · GEBCO",
         });
         map.addLayer(
           {
@@ -656,10 +631,8 @@ export default function MapView(props: Props) {
       map.addLayer({
         id: "train-points", type: "symbol", source: "trains",
         layout: {
-          // cercanías → tren urbano; media/larga distancia y AVE → tren clásico
-          "icon-image": ["match", ["coalesce", ["get", "service"], "tren"],
-            "cercanías", "metro",
-            "train"],
+          // mismo pictograma que la leyenda para todos los servicios
+          "icon-image": "train",
           "icon-size": ["interpolate", ["linear"], ["zoom"], 1, 0.5, 5, 0.8, 9, 1, 13, 1.2],
           "icon-rotate": ["coalesce", ["get", "track"], 0],
           "icon-rotation-alignment": "map",
@@ -849,9 +822,7 @@ export default function MapView(props: Props) {
       map.addLayer({
         id: "train-motion-layer", type: "symbol", source: "train-motion", minzoom: 4,
         layout: {
-          "icon-image": ["match", ["coalesce", ["get", "service"], "tren"],
-            "cercanías", "metro",
-            "train"],
+          "icon-image": "train",
           "icon-size": ["interpolate", ["linear"], ["zoom"], 4, 0.7, 9, 1, 13, 1.2],
           "icon-rotate": ["coalesce", ["get", "track"], 0],
           "icon-rotation-alignment": "map",
@@ -1589,7 +1560,16 @@ export default function MapView(props: Props) {
     toggle("fence-line", visible.fences !== false);
     toggle("places", visible.places !== false);
     toggle("graticule", visible.graticule !== false);
-  }, [visible, layersReady]);
+    // La estela y el halo no son capas independientes: pertenecen al elemento
+    // seleccionado. Si se apaga su capa, deben desaparecer con él; antes se
+    // quedaban dibujados aunque el icono ya no estuviera.
+    const selectionVisible = !selectedActor || visible[selectedActor.kind] !== false;
+    toggle("trail-glow", selectionVisible);
+    toggle("trail-line", selectionVisible);
+    toggle("trail-head-glow", selectionVisible);
+    toggle("trail-head-dot", selectionVisible);
+    toggle("selection-halo", selectionVisible);
+  }, [visible, layersReady, selectedActor]);
 
   /* ------------------------------------------------------------ selection */
   useEffect(() => {

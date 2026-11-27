@@ -1,3 +1,5 @@
 # Solo para desarrollo y CI: `make check` y el workflow AEGIS · CI.
 -r requirements.txt
 pytest==9.2.0
+# navegador remoto de Browserless para scripts/check_browserless.py
+playwright==1.65.2

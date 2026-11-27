@@ -6,7 +6,7 @@
 VENV ?= .venv
 PY   ?= $(VENV)/bin/python
 
-.PHONY: install geo backend frontend build dev smoke check clean
+.PHONY: install geo backend frontend build dev smoke browserless check clean
 
 install:            ## dependencias de backend (en .venv) y frontend
 	python3 -m venv $(VENV)
@@ -30,6 +30,9 @@ dev:                ## backend + frontend de desarrollo a la vez
 
 smoke:              ## comprobaciones contra un servidor en marcha
 	$(PY) scripts/smoke.py
+
+browserless:        ## navegador remoto de Browserless (BROWSERLESS_TOKEN en .env)
+	$(PY) scripts/check_browserless.py
 
 check:              ## lo mismo que el CI: tipos, lint y tests (sin red)
 	cd frontend && ./node_modules/.bin/tsc --noEmit

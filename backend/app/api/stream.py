@@ -30,10 +30,16 @@ MAX_WAIT = 25
 
 
 def _snapshot(since: int, alert_since: int, layers: list[str]) -> dict[str, Any]:
+    # `events` no tiene huella propia en `_layer_versions`: se avisa por la
+    # secuencia de sucesos. Sin esto el cliente avanzaba el cursor sin recargar
+    # la capa y los sucesos nuevos solo aparecían en el siguiente sondeo largo.
+    changed = list(layers)
+    if HUB.event_seq > since and "events" not in changed:
+        changed.append("events")
     return {
         "cursor": HUB.event_seq,
         "alert_cursor": HUB.alert_seq,
-        "layers": layers,
+        "layers": changed,
         "alerts": HUB.alerts_since(alert_since),
         "versions": {k: str(v) for k, v in HUB.versions.items()},
         "server_time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),

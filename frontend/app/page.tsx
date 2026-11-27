@@ -12,6 +12,7 @@ import SidePanel, { BASEMAP_IDS, type LayerCounts } from "@/components/SidePanel
 import Timeline from "@/components/Timeline";
 import TopBar from "@/components/TopBar";
 import { api, apiUrl, assetUrl, wsUrl } from "@/lib/api";
+import { alertKey, mergeAlerts } from "@/lib/alerts";
 import { locateMe } from "@/lib/geo";
 import { CATEGORY_META, fmtNumber, timeAgo } from "@/lib/format";
 import type {
@@ -32,27 +33,8 @@ const ALL_CATS = Object.keys(CATEGORY_META);
 /** Ventana del archivo: coincide con RETENTION_DAYS por defecto (7 días). */
 const RETENTION_H = 168;
 
-const VIEW_PRESETS = [
-  {
-    id: "general", label: "General", basemap: "operativo",
-    hint: "Panorama de todas las fuentes principales",
-    layers: ["events", "aircraft", "vessels", "satellites", "cameras", "trains", "fences", "places", "graticule"],
-  },
-  {
-    id: "events", label: "Sucesos", basemap: "operativo",
-    hint: "Sucesos y lugares, sin tráfico en vivo",
-    layers: ["events", "fences", "places"],
-  },
-  {
-    id: "movement", label: "Movilidad", basemap: "detalle",
-    hint: "Aeronaves, buques, trenes y cámaras sobre el callejero",
-    layers: ["aircraft", "vessels", "trains", "cameras", "places"],
-  },
-] as const;
-
-const VIEW_LAYERS = ["events", "aircraft", "vessels", "satellites", "cameras", "air", "trains", "fences", "places", "graticule"];
-
-/** Filtros rápidos: cada uno enciende o apaga una capa completa del mapa. */
+/** Filtros rápidos: cada uno enciende o apaga una capa completa del mapa.
+   * Grupos: eventos · transporte · sensores · lugares · zonas. */
 const QUICK_FILTERS = [
   { key: "events", label: "Sucesos", icon: "event" },
   { key: "aircraft", label: "Aeronaves", icon: "plane" },
@@ -117,16 +99,6 @@ export default function Page() {
     events: true, aircraft: true, vessels: true, satellites: true,
     cameras: true, air: false, trains: true, fences: true, places: true, graticule: true,
   });
-  const activeView = VIEW_PRESETS.find((preset) =>
-    preset.basemap === basemap && VIEW_LAYERS.every((key) =>
-      (visible[key] !== false) === (preset.layers as readonly string[]).includes(key)
-    )
-  )?.id;
-  const selectView = (preset: typeof VIEW_PRESETS[number]) => {
-    setVisible(Object.fromEntries(VIEW_LAYERS.map((key) => [key, (preset.layers as readonly string[]).includes(key)])));
-    onBasemap(preset.basemap);
-    setLeftOpen(false);
-  };
   const toggleVisible = (key: (typeof QUICK_FILTERS)[number]["key"]) => {
     setVisible((prev) => ({ ...prev, [key]: prev[key] === false }));
   };
@@ -189,8 +161,10 @@ export default function Page() {
   const [showHint, setShowHint] = useState(false);
   const [toasts, setToasts] = useState<Alert[]>([]);
   const [leftOpen, setLeftOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(true);
   const [newAlerts, setNewAlerts] = useState(0);
+  const [eventsTick, setEventsTick] = useState(0);
   const [compact, setCompact] = useState(false);
 
   /* refs compartidos con el canal en vivo (se rellenan más abajo) */
@@ -198,6 +172,7 @@ export default function Page() {
   const refreshLayersRef = useRef<(() => Promise<void>) | null>(null);
   const pushAlertRef = useRef<((a: Alert) => void) | null>(null);
   const pushAlert = (a: Alert) => pushAlertRef.current?.(a);
+  const knownAlerts = useRef<Set<string>>(new Set());
 
   const bboxRef = useRef<Bbox>(bbox);
   bboxRef.current = bbox;
@@ -237,13 +212,36 @@ export default function Page() {
     };
   }, []);
 
+  /** Histórico + avisos vivos: se fusionan para no perder ninguno al reconectar. */
+  const refreshAlerts = useCallback(() => {
+    return api.alerts()
+      .then((r) => {
+        const all = [...(r.alerts ?? []), ...(r.live ?? [])];
+        for (const alert of all) knownAlerts.current.add(alertKey(alert));
+        setAlerts((prev) => mergeAlerts(prev, all));
+      })
+      .catch(() => {});
+  }, []);
+
   /* ------------------------------------------------------------- boot */
   useEffect(() => {
     api.config().then((c) => { setConfig(c); setApiDown(null); })
       .catch((e: any) => setApiDown(friendlyError(e)));
     api.fences().then((r) => { setFencesGeo(r.fences); setFenceDefs(r.definitions); }).catch(() => {});
-    api.alerts().then((r) => setAlerts(r.alerts ?? [])).catch(() => {});
-  }, []);
+    void refreshAlerts();
+  }, [refreshAlerts]);
+
+  /* Red de seguridad del histórico: aunque el WebSocket/long-polling se caiga,
+     los avisos guardados se vuelven a leer al volver a la pestaña y cada 30 s. */
+  useEffect(() => {
+    const onVisible = () => { if (!document.hidden) void refreshAlerts(); };
+    const id = setInterval(onVisible, 30_000);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [refreshAlerts]);
 
   /* recuento de todas las capas (lo que se muestra junto a cada una) */
   useEffect(() => {
@@ -396,7 +394,11 @@ export default function Page() {
     trains: () => { api.trains().then(setTrains).catch(() => {}); },
     air: () => { api.air().then(setAir).catch(() => {}); },
     cameras: () => { api.cameras().then((d) => setCameras(d as LiveCollection)).catch(() => {}); },
-    events: () => { void liveTickRef.current?.(); },
+    events: () => {
+      // Amenazas es global: se refresca aunque el suceso nuevo caiga fuera de la vista.
+      setEventsTick((n) => n + 1);
+      void liveTickRef.current?.();
+    },
     layers: () => { void refreshLayersRef.current?.(); },
   };
   const visibleRef = useRef(visible);
@@ -451,7 +453,7 @@ export default function Page() {
         // solo los avisos posteriores al cursor, sin repetir huellas ya vistas
         const alerts: any[] = data.alerts ?? [];
         for (const alert of alerts) {
-          const stamp = `${alert?.ts ?? ""}-${alert?.title ?? ""}`;
+          const stamp = alertKey(alert as Alert);
           if (!stamp || seenAlerts.has(stamp)) continue;
           seenAlerts.add(stamp);
           if (seenAlerts.size > 400) seenAlerts.clear();
@@ -529,6 +531,7 @@ export default function Page() {
         String(b.properties?.first_seen || "").localeCompare(String(a.properties?.first_seen || ""))
       );
       setEvents({ ...data, features: feats } as any);
+      setEventsTick((n) => n + 1);
       const mark = (data as any)?.server_time
         || (feats.length ? String(feats[0].properties.first_seen) : null);
       if (mark) {
@@ -591,6 +594,7 @@ export default function Page() {
           const add = fresh.features.filter((x: any) => !seen.has(x.properties.id));
           return add.length ? { ...prev, features: [...add, ...prev.features], count: prev.count + add.length } : prev;
         });
+        setEventsTick((n) => n + 1);
         if ((fresh as any)?.server_time) liveMark.current = (fresh as any).server_time;
       } catch { /* sin red: el siguiente ciclo reintenta */ }
     };
@@ -615,7 +619,11 @@ export default function Page() {
     let disposed = false;
 
     const push = (alert: Alert) => {
-      setAlerts((prev) => [alert, ...prev].slice(0, 250));
+      const key = alertKey(alert);
+      const isNew = !knownAlerts.current.has(key);
+      knownAlerts.current.add(key);
+      setAlerts((prev) => mergeAlerts(prev, [alert]));
+      if (!isNew) return;
       setNewAlerts((n) => n + 1);
       if (alert.severity === "critical" || alert.event_type === "rule") {
         setToasts((prev) => [alert, ...prev].slice(0, 4));
@@ -644,10 +652,20 @@ export default function Page() {
       } catch {
         return;
       }
-      socket.onopen = () => { setWsState("open"); attempt = 0; };
+      socket.onopen = () => {
+        setWsState("open");
+        attempt = 0;
+        // al reconectar, recupera lo que se emitiera mientras estaba caído
+        void refreshAlerts();
+      };
       socket.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
+          if (msg.type === "hello" && Array.isArray(msg.recent)) {
+            const recent = msg.recent as Alert[];
+            for (const alert of recent) knownAlerts.current.add(alertKey(alert));
+            setAlerts((prev) => mergeAlerts(prev, recent));
+          }
           if (msg.type === "alert" && msg.alert) push(msg.alert);
         } catch {}
       };
@@ -663,7 +681,7 @@ export default function Page() {
       clearTimeout(timer);
       socket?.close();
     };
-  }, []);
+  }, [refreshAlerts]);
 
   /* ------------------------------------------------------ selection */
   useEffect(() => {
@@ -1235,33 +1253,20 @@ export default function Page() {
         />
 
         <div className="map-col">
-          <nav className="map-views map-overlay" aria-label="Vistas y filtros de visibilidad del mapa">
-            <div className="map-views-row">
-              <span className="map-views-title">Explorar</span>
-              <div className="map-views-options">
-                {VIEW_PRESETS.map((preset) => (
-                  <button
-                    key={preset.id}
-                    className={`map-view-option ${activeView === preset.id ? "active" : ""}`}
-                    onClick={() => selectView(preset)}
-                    aria-pressed={activeView === preset.id}
-                    title={preset.hint}
-                  >{preset.label}</button>
-                ))}
-              </div>
-              {!activeView && (
-                <span className="map-views-custom">
-                  Personalizada
-                  <button className="map-views-reset" onClick={() => selectView(VIEW_PRESETS[0])} title="Volver a la vista General">
-                    Restablecer
-                  </button>
-                </span>
-              )}
-            </div>
-
+          <nav className={`map-views map-overlay ${filtersOpen ? "open" : ""}`} aria-label="Filtros de visibilidad del mapa">
+            <button
+              type="button"
+              className="map-filters-toggle"
+              aria-expanded={filtersOpen}
+              aria-controls="map-quick-filters"
+              onClick={() => setFiltersOpen((open) => !open)}
+            >
+              <Icon name="layers" size={16} />
+              <span>Capas</span>
+            </button>
             <div className="map-views-row map-views-filters">
               <span className="map-views-title">Capas</span>
-              <div className="map-filters" role="group" aria-label="Capas visibles en el mapa">
+              <div className="map-filters" id="map-quick-filters" role="group" aria-label="Capas visibles en el mapa">
                 {QUICK_FILTERS.map((filter) => {
                   const on = visible[filter.key] !== false;
                   const count = quickCount(filter.key);
@@ -1314,29 +1319,19 @@ export default function Page() {
             onBreakdownCluster={breakdownCluster}
             onPlaceSelect={onPlaceSelect}
           />
-          <div className="map-tools map-overlay">
+          <div className="map-tools map-overlay" role="toolbar" aria-label="Herramientas del mapa">
             <button
+              type="button"
               className={`map-tool ${terrain ? "active" : ""}`}
               title="Terreno 3D (requiere conexión)"
+              aria-label="Terreno 3D"
+              aria-pressed={terrain}
               onClick={() => setTerrain((v) => !v)}
             >
               <Icon name="terrain" size={17} />
             </button>
             <button
-              className={`map-tool ${visible.graticule ? "active" : ""}`}
-              title="Retícula"
-              onClick={() => setVisible({ ...visible, graticule: !visible.graticule })}
-            >
-              <Icon name="grid" size={17} />
-            </button>
-            <button
-              className={`map-tool ${visible.places ? "active" : ""}`}
-              title="Núcleos urbanos"
-              onClick={() => setVisible({ ...visible, places: !visible.places })}
-            >
-              <Icon name="city" size={17} />
-            </button>
-            <button
+              type="button"
               className="map-tool"
               title="Mi ubicación"
               aria-label="Mi ubicación"
@@ -1346,14 +1341,6 @@ export default function Page() {
               })}
             >
               <Icon name="locate" size={17} />
-            </button>
-            <button
-              className="map-tool mobile-only"
-              title="Panel de análisis"
-              aria-label="Panel de análisis"
-              onClick={() => setRightOpen((v) => !v)}
-            >
-              <Icon name="panel" size={17} />
             </button>
           </div>
         </div>
@@ -1380,6 +1367,8 @@ export default function Page() {
           onDownloadBriefing={downloadBriefing}
           alerts={alerts}
           alertsCount={criticalAlerts}
+          origin={{ lat: center[1], lon: center[0] }}
+          eventsTick={eventsTick}
           health={health}
           config={config}
           onTriggerSource={triggerSource}
