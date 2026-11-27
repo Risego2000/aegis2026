@@ -8,6 +8,11 @@ const nextConfig = {
   images: { unoptimized: true },
   reactStrictMode: true,
   trailingSlash: false,
+  // GitHub Pages sirve el sitio en /<repo>/, así que las rutas de los assets
+  // necesitan ese prefijo. Sin la variable (backend propio, raíz del dominio)
+  // no hay prefijo y todo sigue igual.
+  basePath: process.env.NEXT_BASE_PATH || "",
+  assetPrefix: process.env.NEXT_BASE_PATH || "",
   eslint: { ignoreDuringBuilds: true },
   // Los tipos se comprueban aparte con `./node_modules/.bin/tsc --noEmit`
   // (dentro de `make check`): el paso de tipos del build lanza un worker que el
