@@ -1,12 +1,21 @@
 /** Thin typed client. All URLs are relative: FastAPI serves this bundle and the
- *  API from the same origin, so there is no CORS configuration to get wrong. */
+ *  API from the same origin, so there is no CORS configuration to get wrong.
+ *
+ *  Cuando el cliente se publica como sitio estático (GitHub Pages), no hay
+ *  backend en ese origen: `NEXT_PUBLIC_AEGIS_API` permite apuntar a la API real
+ *  (por ejemplo el túnel público o tu servidor). Sin la variable, todo sigue
+ *  siendo relativo y el despliegue de siempre no cambia. */
+
+const API_BASE = (process.env.NEXT_PUBLIC_AEGIS_API || "").replace(/\/+$/, "");
+
+const url = (path: string) => (API_BASE && path.startsWith("/api") ? API_BASE + path : path);
 
 import type {
   AppConfig, Alert, Briefing, FeatureCollection, Fence, Health, LiveCollection, NearbyHit,
 } from "./types";
 
-async function json<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, { ...init, headers: { "Content-Type": "application/json", ...(init?.headers || {}) } });
+async function json<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url(path), { ...init, headers: { "Content-Type": "application/json", ...(init?.headers || {}) } });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`${res.status} ${res.statusText} — ${text.slice(0, 200)}`);
@@ -85,6 +94,8 @@ export const api = {
 };
 
 export function wsUrl(path = "/ws/alerts"): string {
+  // con la API en otro origen (sitio estático) el canal también va allí
+  if (API_BASE) return API_BASE.replace(/^http/, "ws") + path;
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${proto}//${window.location.host}${path}`;
 }
