@@ -35,7 +35,7 @@ export const metadata: Metadata = {
   title: "AEGIS · OSINT Super App",
   description:
     "Telemetría global en tiempo real, inteligencia geopolítica y desastres naturales sobre un globo 3D.",
-  manifest: asset("/manifest.webmanifest"),
+  manifest: asset("/manifest.webmanifest?v=2"),
   applicationName: "AEGIS",
   appleWebApp: { capable: true, title: "AEGIS", statusBarStyle: "black-translucent" },
   icons: { icon: [{ url: asset("/icon.svg"), type: "image/svg+xml" }], apple: asset("/icon.svg") },
