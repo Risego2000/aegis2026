@@ -1,0 +1,45 @@
+# dependencias y artefactos de build
+node_modules/
+.next/
+out/
+site/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# estado en tiempo de ejecución (no se versiona)
+logs/
+data/osint.db
+data/osint.db-wal
+data/osint.db-shm
+data/tle_cache.json
+data/tiles/
+backend/data/tiles/
+.env
+
+.DS_Store
+
+*.tsbuildinfo
+
+# caches del entorno de trabajo (no son del proyecto)
+.cache/
+.npm/
+.local/
+.config/
+.ssh/
+.arena/
+
+# datos geográficos pesados: se descargan con scripts/fetch_geo.py
+data/geo/roads.geojson.gz
+data/geo/railroads.geojson
+
+# copias de seguridad y cachés del backend
+data/backups/
+data/cache/
+backend/data/
+
+# enlaces públicos generados en cada arranque
+LINK_CLOUDFLARE.txt
+LINK_LHR.txt
+data/health_links.json

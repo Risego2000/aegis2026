@@ -1,0 +1,309 @@
+"use client";
+
+/**
+ * Ficha de lugar: todo lo que hay donde has pinchado.
+ *
+ * Se abre con cualquier clic sobre el mapa que no caiga en un elemento (o al
+ * pinchar un núcleo urbano) y responde a «¿qué hay aquí?»: país, núcleo urbano
+ * más cercano, coordenadas, y los elementos abiertos dentro del radio elegido
+ * (eventos, cámaras, aeronaves, buques, satélites y sensores de aire). Cada fila
+ * abre a su vez la ficha completa de ese elemento.
+ */
+
+import { categoryMeta, timeAgo } from "@/lib/format";
+import type { ActorKind } from "@/lib/types";
+
+export type PlaceData = {
+  lat: number;
+  lon: number;
+  radius_km: number;
+  country: { name: string; iso: string; continent: string } | null;
+  place: {
+    name: string; kind: string; population: number; lat: number; lon: number;
+    distance_km: number; region?: string;
+  } | null;
+  counts: {
+    events: number;
+    aircraft: number;
+    vessels: number;
+    satellites: number;
+    air: number;
+    trains: number;
+    traffic: number;
+    cameras: number;
+  };
+  summary: string;
+  events: PlaceRow[];
+  aircraft: PlaceRow[];
+  vessels: PlaceRow[];
+  satellites: PlaceRow[];
+  air: PlaceRow[];
+  trains: PlaceRow[];
+  traffic: PlaceRow[];
+  cameras: PlaceRow[];
+  window_hours: number;
+  fetched_at: number;
+};
+
+export type PlaceRow = {
+  id: string;
+  title: string;
+  sub?: string;
+  lat?: number;
+  lon?: number;
+  kind?: string;
+  category?: string;
+  severity?: string;
+  distance_km?: number;
+  ts?: string;
+};
+
+type Props = {
+  place: { lat: number; lon: number; name?: string } | null;
+  data: PlaceData | null;
+  loading: boolean;
+  radiusKm: number;
+  onRadius: (km: number) => void;
+  windowHours: number;
+  onWindow: (hours: number) => void;
+  onPickEvent: (id: string) => void;
+  onPickCamera: (id: string) => void;
+  onPickActor: (kind: ActorKind, id: string) => void;
+  onCenter: () => void;
+  onClear: () => void;
+  onRefresh: () => void;
+};
+
+const RADII = [5, 25, 100, 250];
+
+const SECTIONS: {
+  key: keyof PlaceData["counts"];
+  title: string;
+  hint: string;
+}[] = [
+  { key: "events", title: "Eventos", hint: "todo el almacén en el radio" },
+  { key: "traffic", title: "Tráfico", hint: "incidencias DGT en vivo" },
+  { key: "aircraft", title: "Aeronaves", hint: "ADS-B en este instante" },
+  { key: "vessels", title: "Buques", hint: "AIS en este instante" },
+  { key: "trains", title: "Trenes", hint: "Renfe y Amtrak en vivo" },
+  { key: "satellites", title: "Satélites", hint: "posición propagada ahora" },
+  { key: "cameras", title: "Cámaras públicas", hint: "imagen abierta en vivo" },
+  { key: "air", title: "Calidad del aire", hint: "sensores ciudadanos" },
+];
+
+const SEVERIDAD_ES: Record<string, string> = {
+  critical: "crítica",
+  high: "alta",
+  medium: "media",
+  orange: "alta",
+  low: "baja",
+  info: "informativa",
+  yellow: "media",
+  green: "baja",
+  red: "crítica",
+};
+
+/** Línea secundaria de cada fila, siempre redactada en español. */
+/** Número con coma decimal, como se escribe en español. */
+function km(v: number | string | undefined): string {
+  if (v === undefined || v === null) return "";
+  const n = typeof v === "string" ? Number(v) : v;
+  if (!Number.isFinite(n)) return String(v);
+  return n.toLocaleString("es-ES", { maximumFractionDigits: 1 });
+}
+
+function metaDe(key: keyof PlaceData["counts"], row: PlaceRow): string {
+  if (key === "events" || key === "traffic") {
+    return [
+      categoryMeta(row.category ?? "").label,
+      row.severity ? `gravedad ${SEVERIDAD_ES[row.severity] ?? row.severity}` : "",
+      row.sub,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+  return [row.sub, row.distance_km !== undefined ? `${km(row.distance_km)} km` : ""].filter(Boolean).join(" · ");
+}
+
+function fmtCoord(v: number, kind: "lat" | "lon") {
+  const hemi = kind === "lat" ? (v >= 0 ? "N" : "S") : v >= 0 ? "E" : "O";
+  return `${Math.abs(v).toFixed(4)}° ${hemi}`;
+}
+
+export default function PlacePanel(p: Props) {
+  const d = p.data;
+
+  if (!p.place) {
+    return (
+      <div className="empty">
+        <span className="empty-ico" aria-hidden="true">◎</span>
+        <strong>Pulsa cualquier punto del mapa</strong>
+        Aquí verás qué hay en ese lugar: el país y la región, la ciudad más cercana, las
+        coordenadas exactas y todos los elementos abiertos alrededor (sucesos, cámaras,
+        aeronaves, buques, satélites y sensores de aire). Cada fila abre su ficha completa.
+      </div>
+    );
+  }
+
+  const rowsFor = (key: keyof PlaceData["counts"]): PlaceRow[] =>
+    (d?.[key] as PlaceRow[] | undefined) ?? [];
+
+  const pick = (key: keyof PlaceData["counts"], row: PlaceRow) => {
+    if (key === "events" || key === "traffic") p.onPickEvent(row.id);
+    else if (key === "cameras") p.onPickCamera(row.id);
+    else p.onPickActor(key as ActorKind, row.id);
+  };
+
+  return (
+    <div data-actualizado={d?.fetched_at ?? 0} data-radio={p.radiusKm}>
+      <div className="section" style={{ paddingTop: 6 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+          <div style={{ minWidth: 0 }}>
+            <div className="section-title" style={{ marginBottom: 2 }}>
+              {p.place.name || d?.place?.name || "Punto del mapa"}
+            </div>
+            <div className="tiny faint">
+              {[
+                d?.country?.name,
+                d?.country?.continent,
+                d?.place?.region,
+                d?.place && d.place.distance_km > 0.6
+                  ? `${d.place.name} a ${km(d.place.distance_km)} km`
+                  : d?.place && !p.place.name
+                    ? `${d.place.name} (${km(d.place.distance_km)} km)`
+                    : null,
+              ]
+                .filter(Boolean)
+                .join(" · ") || "localizando…"}
+            </div>
+          </div>
+          <button className="btn" onClick={p.onClear} title="Cerrar la ficha del lugar">✕</button>
+        </div>
+
+        <div className="place-coords mono tiny">
+          <span>{fmtCoord(p.place.lat, "lat")}</span>
+          <span>{fmtCoord(p.place.lon, "lon")}</span>
+          <span className="faint">{p.place.lat.toFixed(5)}, {p.place.lon.toFixed(5)}</span>
+        </div>
+
+        <div className="btn-row" style={{ marginTop: 8 }}>
+          <button className="btn primary" onClick={p.onCenter} title="Centrar el mapa en este punto">
+            ◎ Centrar aquí
+          </button>
+          <button className="btn" onClick={p.onRefresh} title="Volver a consultar ahora">
+            {p.loading ? <span className="spinner" /> : "↻"} Actualizar
+          </button>
+        </div>
+
+        <div className="place-radii" role="group" aria-label="Radio de búsqueda">
+          <span className="tiny faint" style={{ marginRight: 4 }}>Radio</span>
+          {RADII.map((km) => (
+            <button
+              key={km}
+              className={`chip ${p.radiusKm === km ? "active" : ""}`}
+              onClick={() => p.onRadius(km)}
+              title={`Buscar en ${km} km a la redonda`}
+            >
+              {km} km
+            </button>
+          ))}
+        </div>
+
+        {d && (
+          <>
+            <div className="tiny faint" style={{ marginTop: 8, lineHeight: 1.55 }}>
+              {d.summary} · actualizado hace {timeAgo(new Date(d.fetched_at).toISOString())}
+            </div>
+            <div className="place-window" role="group" aria-label="Ventana de tiempo de los eventos">
+              <span className="tiny faint">Eventos de</span>
+              {[24, 168, 720].map((h) => (
+                <button
+                  key={h}
+                  className={`chip ${p.windowHours === h ? "active" : ""}`}
+                  onClick={() => p.onWindow(h)}
+                  title={
+                    h === 24 ? "Últimas 24 horas"
+                    : h === 168 ? "Última semana (por defecto)"
+                    : "Últimos 30 días"
+                  }
+                >
+                  {h === 24 ? "24 h" : h === 168 ? "7 días" : "30 días"}
+                </button>
+              ))}
+            </div>
+            <div className="row-2" style={{ marginTop: 9 }}>
+              {SECTIONS.map((s) => (
+                <div className="mini-stat" key={s.key} title={s.hint}>
+                  <div className="ms-label">{s.title.replace("Cámaras públicas", "Cámaras")}</div>
+                  <div className="ms-value">{d.counts[s.key]}</div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {p.loading && !d && (
+        <div className="section">
+          <div className="source-row" style={{ padding: 0 }}>
+            <span className="spinner" />
+            <span className="source-name tiny">Consultando el entorno del punto…</span>
+          </div>
+        </div>
+      )}
+
+      {d &&
+        SECTIONS.map((s) => {
+          const rows = rowsFor(s.key);
+          const n = d.counts[s.key];
+          return (
+            <div className="section" key={s.key}>
+              <div className="section-title">
+                <span>{s.title}</span>
+                <span className="layer-badge">{n}</span>
+              </div>
+              <div className="tiny faint" style={{ marginBottom: rows.length ? 6 : 0 }}>
+                {s.hint}
+              </div>
+              {rows.length === 0 && s.key === "cameras" && (
+                <div className="cov-note">
+                  No hay cámaras públicas con imagen abierta en {p.radiusKm} km. Solo cinco redes
+                  publican sin clave (País Vasco, Londres, California, Nueva York y Helsinki): fuera
+                  de ellas no existen cámaras accesibles y no se simulan.
+                </div>
+              )}
+              {rows.length === 0 && s.key !== "cameras" && (
+                <div className="tiny faint">Nada de esta capa en {p.radiusKm} km a la redonda.</div>
+              )}
+              {rows.map((row) => (
+                <div
+                  className="event-row"
+                  key={`${s.key}-${row.id}`}
+                  onClick={() => pick(s.key, row)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") pick(s.key, row); }}
+                  title="Abrir la ficha completa"
+                >
+                  <span className={`place-dot place-dot-${s.key}`} />
+                  <div className="event-main">
+                    <div className="event-title">{row.title || row.id}</div>
+                    {metaDe(s.key, row) && (
+                      <div className="event-sub">{metaDe(s.key, row)}</div>
+                    )}
+                  </div>
+                  <span className="tiny faint">›</span>
+                </div>
+              ))}
+              {n > rows.length && (
+                <div className="tiny faint" style={{ marginTop: 4 }}>
+                  {n - rows.length} más sin listar: pulsa «Centrar aquí» sobre una zona más
+                  pequeña o reduce el radio para verlos todos.
+                </div>
+              )}
+            </div>
+          );
+        })}
+    </div>
+  );
+}
