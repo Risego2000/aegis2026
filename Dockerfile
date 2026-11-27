@@ -24,8 +24,13 @@ WORKDIR /app
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY backend/ ./
+COPY backend/ ./backend/
+COPY data/geo/ ./data/geo/
+COPY data/index_renfe.json.gz ./data/index_renfe.json.gz
 COPY --from=web /web/out ./frontend/out
+
+# app.config calcula ROOT desde backend/app; conservamos esa estructura.
+WORKDIR /app/backend
 
 ENV HOST=0.0.0.0 \
     PORT=8000 \
