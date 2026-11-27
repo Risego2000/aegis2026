@@ -6,41 +6,63 @@
    ========================================================================== */
 
 :root {
-  /* --- color ------------------------------------------------------------ */
-  --bg: #05080f;
-  --bg-2: #080d16;
-  --bg-3: #0b1220;
-  --panel: rgba(10, 16, 26, 0.88);
-  --panel-2: rgba(13, 20, 32, 0.94);
-  --panel-solid: #0a111b;
-  --raise: rgba(255, 255, 255, 0.035);
+  /* --- color ------------------------------------------------------------
+     Base pizarra azulada y cuatro niveles de superficie: en oscuro se sube
+     de nivel aclarando, nunca oscureciendo (Carbon, Gray 100). El acento es
+     acero frío para interacción; el ámbar queda reservado a la atención, así
+     que un aviso no compite con un botón.                                        */
+  --bg: #070b11;
+  --bg-2: #0a1017;
+  --bg-3: #0d141d;
+  --surface-1: #0b121a;
+  --surface-2: #0f1822;
+  --surface-3: #141f2b;
+  --surface-4: #1a2634;
+  --panel: rgba(11, 18, 26, 0.94);
+  --panel-2: rgba(15, 24, 34, 0.97);
+  --panel-solid: #0b121a;
+  --raise: rgba(255, 255, 255, 0.032);
   --raise-2: rgba(255, 255, 255, 0.06);
-  --border: rgba(112, 152, 190, 0.20);
-  --border-soft: rgba(112, 152, 190, 0.12);
-  --border-strong: rgba(70, 214, 208, 0.42);
-  --text: #e2eaf4;
-  --text-dim: #93a6bb;
-  --text-faint: #63768c;
-  --accent: #38e0cd;
-  --accent-2: #7c9cff;
-  --accent-dim: rgba(56, 224, 205, 0.13);
-  --accent-glow: rgba(56, 224, 205, 0.35);
-  --danger: #ff5277;
-  --warn: #ffb020;
-  --ok: #35d07f;
-  --violet: #b388ff;
+  --line: rgba(148, 170, 195, 0.14);
+  --line-soft: rgba(148, 170, 195, 0.08);
+  --line-strong: rgba(148, 170, 195, 0.26);
+  /* alias heredados: el resto de la hoja sigue funcionando sin tocarse */
+  --border: var(--line);
+  --border-soft: var(--line-soft);
+  --border-strong: rgba(126, 162, 255, 0.48);
+  --text: #e7eef7;
+  --text-dim: #a4b5c8;
+  --text-faint: #7b8da1;
+  --accent: #7ea2ff;
+  --accent-ink: #0a1730;
+  --accent-2: #6fb3d9;
+  --accent-dim: rgba(126, 162, 255, 0.12);
+  --accent-glow: rgba(126, 162, 255, 0.28);
+  --signal: #f2b13c;
+  --danger: #ef6b7d;
+  --warn: #f2b13c;
+  --ok: #46c98b;
+  --violet: #b6a0f0;
 
   /* --- forma ------------------------------------------------------------ */
-  --radius: 12px;
-  --radius-sm: 8px;
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --shadow-2: 0 10px 26px rgba(0, 0, 0, 0.45);
-  --shadow-3: 0 26px 70px rgba(0, 0, 0, 0.62);
-  --inset-hi: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --radius: 10px;
+  --radius-sm: 7px;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 10px 28px -10px rgba(0, 0, 0, 0.6);
+  --shadow-3: 0 28px 64px -22px rgba(0, 0, 0, 0.72);
+  --inset-hi: inset 0 1px 0 rgba(255, 255, 255, 0.045);
 
-  /* --- tipografía ------------------------------------------------------- */
-  --mono: "SFMono-Regular", "JetBrains Mono", "Menlo", "Consolas", monospace;
-  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* --- tipografía -------------------------------------------------------
+     Escala pensada para densidad: 11 caption · 12 etiqueta · 13 cuerpo ·
+     15 énfasis · 18 título · 24 héroe. Nada de texto legible por debajo de 11. */
+  --mono: var(--font-mono), "SFMono-Regular", Menlo, Consolas, monospace;
+  --sans: var(--font-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  --fs-caption: 11px;
+  --fs-label: 12px;
+  --fs-body: 13px;
+  --fs-emphasis: 15px;
+  --fs-title: 18px;
+  --fs-hero: 24px;
 }
 
 * { box-sizing: border-box; }
@@ -1239,3 +1261,424 @@ html, body { overscroll-behavior: none; -webkit-tap-highlight-color: transparent
 .threat-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .threat-title { font-size: 12.5px; line-height: 1.35; }
 .threat-meta { line-height: 1.4; }
+
+/* ============================================================================
+   AEGIS · capa de refinamiento (v2)
+   ----------------------------------------------------------------------------
+   Sustituye el lenguaje «neón» por uno de consola: superficies en cuatro
+   niveles, filetes de 1 px, acento acero para interacción, ámbar reservado a
+   la atención y cifras tabulares. Se aplica al final para ganar la cascada sin
+   reescribir 1.200 líneas de componentes ya probados.
+
+   Criterios tomados de la investigación:
+   · jerarquía primero: un solo elemento fuerte por pantalla (valor héroe);
+   · elevación en cuatro pasos, aclarando al subir (Carbon Gray 100);
+   · escala tipográfica 11/12/13/15/18/24 con cifras tabulares;
+   · nada de significado solo por color: cada estado lleva texto o forma;
+   · movimiento discreto y respeto a prefers-reduced-motion.
+   ========================================================================== */
+
+html, body {
+  background: var(--bg);
+  font-size: 12.5px;
+  letter-spacing: 0.005em;
+}
+body::before {
+  content: "";
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(900px 480px at 12% -8%, rgba(126, 162, 255, 0.06), transparent 62%),
+    radial-gradient(760px 420px at 96% 0%, rgba(111, 179, 217, 0.04), transparent 60%);
+}
+::selection { background: rgba(126, 162, 255, 0.28); color: #fff; }
+
+a { color: var(--accent); text-underline-offset: 2px; }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 170, 195, 0.22); border-radius: 6px;
+  border: 2px solid transparent; background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(148, 170, 195, 0.38); background-clip: content-box; }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 5px;
+}
+
+.app { grid-template-rows: 58px 1fr 72px; }
+
+/* ================================================================ cabecera */
+.topbar {
+  gap: 14px;
+  padding: 0 16px;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--line);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+.brand { gap: 9px; }
+.brand-mark {
+  width: 28px; height: 28px; border-radius: 7px;
+  background: var(--surface-3);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--inset-hi);
+  color: var(--accent);
+  font-size: 12px; font-weight: 700;
+  transition: border-color 0.15s, background 0.15s;
+}
+.brand:hover .brand-mark {
+  transform: none;
+  border-color: var(--border-strong);
+  background: var(--surface-4);
+  box-shadow: var(--inset-hi);
+}
+.brand-name {
+  font-size: 13px; font-weight: 700; letter-spacing: 0.26em;
+  background: none; -webkit-background-clip: initial; background-clip: initial;
+  color: var(--text);
+}
+.brand-sub {
+  font-size: 9px; letter-spacing: 0.2em; color: var(--text-faint);
+  margin-top: 1px;
+}
+
+/* indicadores: fichas de instrumento, no píldoras.
+   La tira se dimensiona por contenido (nada de recortar una cifra a la mitad) y
+   es el buscador el que absorbe el espacio libre, con tope. */
+.kpis { flex: 0 1 auto; gap: 6px; padding: 7px 0; overflow: visible; }
+.kpi {
+  flex: 0 0 auto; min-width: 66px; padding: 4px 9px; border-radius: 7px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  box-shadow: var(--inset-hi);
+}
+.kpi-label {
+  font-size: 9px; letter-spacing: 0.13em; font-weight: 600; color: var(--text-faint);
+}
+.kpi-value {
+  font-size: 15px; font-weight: 600; color: var(--text); letter-spacing: -0.01em;
+}
+.kpi-value.accent { color: var(--accent); text-shadow: none; }
+.kpi.clickable:hover {
+  background: var(--surface-3);
+  border-color: var(--line-strong);
+  transform: none;
+  box-shadow: var(--inset-hi), 0 0 0 1px rgba(126, 162, 255, 0.18);
+}
+.kpi.clickable:active { background: var(--surface-4); }
+
+.search {
+  flex: 1 1 auto;
+  min-width: 180px;
+  max-width: 460px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 10px;
+  box-shadow: var(--inset-hi);
+}
+.search:focus-within {
+  border-color: var(--border-strong);
+  box-shadow: 0 0 0 3px rgba(126, 162, 255, 0.14);
+}
+.search input { font-size: 12px; }
+
+.status-dot { width: 6px; height: 6px; box-shadow: none; }
+.status-dot.ok { background: var(--ok); box-shadow: 0 0 0 3px rgba(70, 201, 139, 0.14); }
+.status-dot.warn { background: var(--warn); box-shadow: 0 0 0 3px rgba(242, 177, 60, 0.14); }
+.status-dot.err { background: var(--danger); box-shadow: 0 0 0 3px rgba(239, 107, 125, 0.14); }
+
+.live-pill {
+  padding: 4px 9px; border-radius: 6px;
+  border: 1px solid rgba(70, 201, 139, 0.32);
+  background: rgba(70, 201, 139, 0.09);
+  color: #a9ecc9; font-size: 9.5px; letter-spacing: 0.14em;
+}
+.live-pill .live-dot { width: 5px; height: 5px; border-radius: 50%; }
+.live-pill:not(.warn):not(.err) .live-dot { animation: aegis-pulse 2.4s ease-in-out infinite; }
+@keyframes aegis-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+.clock { font-size: 12px; letter-spacing: 0.06em; color: var(--text-dim); }
+
+.icon-btn {
+  width: 30px; height: 30px; border-radius: 7px;
+  background: var(--surface-2); border: 1px solid var(--line-soft);
+  color: var(--text-dim); box-shadow: var(--inset-hi);
+}
+.icon-btn:hover {
+  color: var(--accent); background: var(--surface-3);
+  border-color: var(--line-strong);
+}
+.icon-btn.active {
+  color: var(--accent-ink); background: var(--accent); border-color: transparent;
+}
+
+/* ================================================================== paneles */
+.panel {
+  background: var(--panel);
+  backdrop-filter: blur(12px) saturate(1.05);
+  border-color: var(--line);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+.panel-head {
+  padding: 9px 14px;
+  font-size: 9.5px; letter-spacing: 0.15em;
+  color: var(--text-faint);
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--line);
+}
+
+.section { padding: 14px; border-bottom: 1px solid var(--line-soft); }
+.section-title {
+  font-size: 10px; letter-spacing: 0.13em; font-weight: 600;
+  color: var(--text-faint); margin-bottom: 10px;
+}
+.section-title .st-count { font-size: 10px; color: var(--text-dim); letter-spacing: 0.02em; }
+.section-hint { font-size: 11px; line-height: 1.55; }
+.group-label { font-size: 9px; letter-spacing: 0.14em; }
+
+/* pestañas: subrayado, no píldora con halo */
+.tabs {
+  padding: 0 6px; gap: 0;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--line);
+}
+.tab {
+  padding: 10px 9px 9px;
+  font-size: 10.5px; letter-spacing: 0.07em; font-weight: 600;
+  color: var(--text-faint);
+  border-radius: 0; border-bottom: 2px solid transparent;
+}
+.tab:hover { color: var(--text); background: rgba(255, 255, 255, 0.03); }
+.tab.active {
+  color: var(--text);
+  background: none;
+  border-bottom-color: var(--accent);
+  box-shadow: none;
+}
+.tab.active .tab-ico { color: var(--accent); }
+.tab-ico { font-size: 10.5px; opacity: 0.75; }
+.tab-badge {
+  font-size: 9px; padding: 0 5px; border-radius: 4px;
+  background: rgba(239, 107, 125, 0.18); color: #ffc2cc;
+  border: 1px solid rgba(239, 107, 125, 0.35);
+}
+
+/* ================================================================== fichas */
+.card {
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+  box-shadow: var(--inset-hi);
+  padding: 12px;
+}
+.card-title { font-size: 9px; letter-spacing: 0.14em; color: var(--text-faint); }
+.detail { padding: 15px; }
+.detail-title { font-size: 16px; font-weight: 600; line-height: 1.35; letter-spacing: -0.01em; }
+.detail-lede {
+  font-size: 12px; line-height: 1.6; color: var(--text-dim);
+  border-left: 2px solid var(--border-strong);
+}
+.badge {
+  font-size: 9.5px; letter-spacing: 0.06em; border-radius: 4px;
+  padding: 2px 7px; border-color: var(--line);
+  background: var(--surface-3); color: var(--text-dim);
+}
+.kv { grid-template-columns: 108px 1fr; gap: 5px 12px; font-size: 11.5px; }
+.kv dt { font-size: 9.5px; letter-spacing: 0.07em; color: var(--text-faint); }
+.kv dd { font-size: 11.5px; color: var(--text); }
+.kv-grid span { font-size: 9.5px; letter-spacing: 0.05em; color: var(--text-faint); }
+.kv-grid b { font-size: 11.5px; }
+
+/* ================================================================== controles */
+.chip {
+  font-family: var(--sans);
+  font-size: 11px; letter-spacing: 0.01em; font-weight: 500;
+  padding: 4px 10px; border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text-dim);
+}
+.chip:hover {
+  color: var(--text); background: var(--surface-3);
+  border-color: var(--line-strong);
+}
+.chip.active {
+  background: var(--accent-dim); border-color: var(--border-strong);
+  color: #c9d8ff; box-shadow: none;
+}
+
+.btn {
+  height: 30px; padding: 0 12px; border-radius: 7px;
+  font-size: 11.5px; font-weight: 600; letter-spacing: 0.01em;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  box-shadow: var(--inset-hi);
+}
+.btn:hover {
+  background: var(--surface-3); border-color: var(--line-strong);
+  color: var(--text);
+}
+.btn:active { transform: translateY(1px); }
+.btn.primary {
+  background: var(--accent); color: var(--accent-ink);
+  border-color: transparent;
+  box-shadow: 0 6px 16px -8px rgba(126, 162, 255, 0.6);
+}
+.btn.primary:hover { filter: brightness(1.06); background: var(--accent); color: var(--accent-ink); }
+.btn.ghost { background: transparent; box-shadow: none; border-color: var(--line-soft); }
+.btn.ghost:hover { background: var(--surface-2); }
+.btn.danger {
+  color: #ffc2cc; border-color: rgba(239, 107, 125, 0.4);
+  background: rgba(239, 107, 125, 0.08);
+}
+.btn.danger:hover { background: rgba(239, 107, 125, 0.16); }
+.btn:disabled { opacity: 0.42; }
+
+/* ================================================================== listas */
+.layer-row { padding: 7px 8px; border-radius: 7px; }
+.layer-row:hover { background: var(--surface-3); border-color: var(--line-soft); }
+.layer-swatch { box-shadow: none; border-radius: 2px; }
+.layer-name { font-size: 12px; }
+.layer-count, .layer-badge { font-size: 10px; color: var(--text-faint); }
+
+.event-row { border-radius: 7px; padding: 8px 9px; }
+.event-row:hover { background: var(--surface-3); border-color: var(--line-soft); }
+.event-row.selected {
+  background: var(--accent-dim);
+  border-color: var(--border-strong);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.event-dot { box-shadow: none; }
+.event-title { font-size: 12px; color: var(--text); }
+.event-sub { font-size: 9.5px; color: var(--text-faint); }
+
+.alert-row {
+  border-radius: 6px; border-left-width: 2px;
+  background: var(--surface-2);
+  border-left-color: var(--line-strong);
+}
+.alert-row:hover { background: var(--surface-3); }
+.alert-row.critical { background: rgba(239, 107, 125, 0.07); border-left-color: var(--danger); }
+.alert-row.rule { border-left-color: var(--signal); }
+
+.source-row { padding: 6px 6px; }
+.source-row:hover { background: var(--surface-3); }
+.source-name { font-size: 11.5px; }
+.source-meta { font-size: 9.5px; color: var(--text-faint); }
+
+.switch { background: rgba(148, 170, 195, 0.18); box-shadow: inset 0 1px 2px rgba(0,0,0,0.45); }
+.switch.on { background: rgba(126, 162, 255, 0.28); }
+.switch.on::after { background: var(--accent); box-shadow: none; }
+
+/* ============================================================== mapa: marco */
+.map-wrap { background: #060a10; }
+/* cantoneras de consola: puro CSS, sin nodos extra ni peso en el DOM */
+.map-wrap::after {
+  content: ""; position: absolute; inset: 9px; z-index: 4; pointer-events: none;
+  --c: rgba(148, 170, 195, 0.34);
+  background:
+    linear-gradient(var(--c), var(--c)) left top / 16px 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) left top / 1px 16px no-repeat,
+    linear-gradient(var(--c), var(--c)) right top / 16px 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) right top / 1px 16px no-repeat,
+    linear-gradient(var(--c), var(--c)) left bottom / 16px 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) left bottom / 1px 16px no-repeat,
+    linear-gradient(var(--c), var(--c)) right bottom / 16px 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) right bottom / 1px 16px no-repeat;
+}
+
+/* ============================================================ estados vacíos */
+.empty { color: var(--text-dim); }
+.empty-ico { color: var(--accent); opacity: 0.7; }
+.cov-note {
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  font-size: 11px; line-height: 1.55;
+}
+.code-block {
+  background: var(--bg);
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  font-size: 10.5px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* --- rail de pestañas: icono siempre, etiqueta solo en la activa ---------- */
+.tab { padding: 10px 11px 9px; min-width: 34px; justify-content: center; }
+.tab-label { display: none; }
+.tab.active .tab-label { display: inline; margin-left: 1px; }
+.tab.active { padding-right: 13px; }
+.tabs { padding-right: 4px; }
+
+/* --- densidad de indicadores ---------------------------------------------- */
+.kpi { min-width: 62px; padding: 4px 9px; }
+.kpi-label { font-size: 8.5px; letter-spacing: 0.1em; }
+
+/* En pantallas donde la cabecera va justa, primero desaparecen los indicadores
+   secundarios (archivo, aire) antes que partir una cifra. */
+@media (max-width: 1740px) {
+  .kpi.kpi-secondary { display: none; }
+}
+@media (max-width: 1560px) {
+  /* cuatro métricas caben con holgura; el resto sigue en Capas y en el detalle */
+  .kpis .kpi:nth-child(n + 5) { display: none; }
+}
+@media (max-width: 1180px) {
+  .kpis .kpi:nth-child(n + 3) { display: none; }
+}
+@media (max-width: 1280px) {
+  .brand-sub { display: none; }
+  .clock { display: none; }
+  .live-age { display: none; }
+}
+
+/* --- legibilidad de bloques largos --------------------------------------- */
+.empty { max-width: 46ch; margin-inline: auto; }
+.briefing { font-size: 12px; line-height: 1.62; }
+.panel-body { padding-bottom: 6px; }
+
+/* --- tablas dentro de informes (SITREP, casos) ---------------------------- */
+.md-table-wrap { overflow-x: auto; margin: 10px 0 12px; border: 1px solid var(--line-soft); border-radius: 7px; }
+.md-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.md-table th {
+  text-align: left; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--text-faint); font-weight: 600;
+  padding: 7px 9px; background: var(--surface-3);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.md-table td {
+  padding: 6px 9px; color: var(--text-dim);
+  border-bottom: 1px solid var(--line-soft);
+  font-variant-numeric: tabular-nums;
+}
+.md-table tbody tr:last-child td { border-bottom: none; }
+.md-table tbody tr:hover td { background: rgba(255, 255, 255, 0.025); color: var(--text); }
+
+/* --- móvil: la cabecera prioriza marca, búsqueda y tres acciones ---------- */
+@media (max-width: 760px) {
+  .topbar { gap: 9px; padding: 0 11px; }
+  .search { flex: 1 1 auto; min-width: 0; padding: 6px 8px; }
+  .search input { font-size: 11.5px; }
+  .top-actions { gap: 6px; }
+  .top-actions .icon-btn[aria-label="Compartir vista"],
+  .top-actions .icon-btn[aria-label="Ayuda"] { display: none; }
+}
+
+/* La tabla de sucesos trae siete columnas: se fija un ancho mínimo legible y
+   el contenedor scrollea en horizontal antes que partir palabras. */
+.md-table { min-width: 430px; }
+.md-table td { white-space: normal; overflow-wrap: break-word; }
+.md-table th { white-space: nowrap; }
+.tab { padding: 10px 10px 9px; }

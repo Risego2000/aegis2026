@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   ActorDetail, ActorKind, Alert, AppConfig, Briefing, EventFeature, Health, NearbyHit, SourceStatus,
 } from "@/lib/types";
@@ -86,6 +86,23 @@ const TABS: { key: Tab; label: string; icon: string; hint: string }[] = [
 
 export default function RightPanel(p: Props) {
   const [onlyCritical, setOnlyCritical] = useState(false);
+  const tabsRef = useRef<HTMLDivElement | null>(null);
+
+  // El rail muestra la etiqueta solo en la pestaña activa: si está al final,
+  // hay que llevarla a la vista o aparece cortada («ANALIST»).
+  useEffect(() => {
+    const rail = tabsRef.current;
+    const active = rail?.querySelector<HTMLElement>(".tab.active");
+    if (!rail || !active) return;
+    const left = active.offsetLeft;
+    const right = left + active.offsetWidth;
+    // desplazamiento instantáneo: una animación aquí pelea con el clic y con
+    // el propio scroll táctil del rail
+    if (left < rail.scrollLeft) rail.scrollLeft = left - 8;
+    else if (right > rail.scrollLeft + rail.clientWidth) {
+      rail.scrollLeft = right - rail.clientWidth + 8;
+    }
+  }, [p.tab]);
 
   const filteredAlerts = useMemo(
     () => (onlyCritical ? p.alerts.filter((a) => a.severity === "critical" || a.event_type === "rule") : p.alerts),
@@ -95,16 +112,20 @@ export default function RightPanel(p: Props) {
   return (
     <aside className={`panel right ${p.open ? "open" : ""}`}>
       <button className="sheet-grip" onClick={() => p.onClose?.()} aria-label="Cerrar panel" />
-      <div className="tabs">
+      <div className="tabs" ref={tabsRef}>
         {TABS.map((t) => (
           <button
             key={t.key}
             className={`tab ${p.tab === t.key ? "active" : ""}`}
             onClick={() => p.setTab(t.key)}
-            title={t.hint}
+            title={`${t.label} · ${t.hint}`}
+            aria-label={t.label}
+            aria-current={p.tab === t.key ? "page" : undefined}
           >
             <span className="tab-ico" aria-hidden="true">{t.icon}</span>
-            {t.label}
+            {/* rail de iconos: la etiqueta solo se despliega en la pestaña activa,
+                así nueve secciones caben sin scroll en un panel de 404 px */}
+            <span className="tab-label">{t.label}</span>
             {t.key === "alerts" && p.alertsCount > 0 && <span className="tab-badge">{p.alertsCount > 99 ? "99+" : p.alertsCount}</span>}
           </button>
         ))}

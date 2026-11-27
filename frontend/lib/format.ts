@@ -134,8 +134,43 @@ export function markdownToHtml(md: string): string {
       inList = false;
     }
   };
-  for (const raw of lines) {
+
+  // --- tablas -------------------------------------------------------------
+  // El SITREP y los informes de caso salen en Markdown con tablas: sin esto se
+  // veían las barras verticales crudas dentro del panel.
+  const isRow = (l: string) => /^\s*\|.*\|\s*$/.test(l);
+  const isDivider = (l: string) => /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(l) && l.includes("|");
+  const cells = (l: string) =>
+    l.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const raw = lines[index];
     const line = raw.trimEnd();
+
+    if (isRow(line)) {
+      const block: string[] = [];
+      while (index < lines.length && isRow(lines[index].trimEnd())) {
+        block.push(lines[index].trimEnd());
+        index += 1;
+      }
+      index -= 1; // el for vuelve a avanzar
+      closeList();
+      if (block.length >= 2 && isDivider(block[1])) {
+        const head = cells(block[0]);
+        const body = block.slice(2);
+        out.push('<div class="md-table-wrap"><table class="md-table">');
+        out.push(`<thead><tr>${head.map((c) => `<th>${inline(c)}</th>`).join("")}</tr></thead>`);
+        out.push("<tbody>");
+        for (const row of body) {
+          out.push(`<tr>${cells(row).map((c) => `<td>${inline(c)}</td>`).join("")}</tr>`);
+        }
+        out.push("</tbody></table></div>");
+      } else {
+        for (const row of block) out.push(`<p>${inline(row)}</p>`);
+      }
+      continue;
+    }
+
     if (/^###\s+/.test(line)) {
       closeList();
       out.push(`<h3>${inline(line.replace(/^###\s+/, ""))}</h3>`);

@@ -1,5 +1,30 @@
 import type { Metadata, Viewport } from "next";
+import localFont from "next/font/local";
 import "./globals.css";
+
+// Tipografía de interfaz densa: Inter para texto y JetBrains Mono para datos.
+// Los woff2 viven en `app/fonts` (subset latino, OFL): el build no depende de
+// Google, así que CI y Pages compilan igual sin red hacia fonts.googleapis.com.
+const inter = localFont({
+  src: [
+    { path: "./fonts/inter-latin-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/inter-latin-500-normal.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/inter-latin-600-normal.woff2", weight: "600", style: "normal" },
+    { path: "./fonts/inter-latin-700-normal.woff2", weight: "700", style: "normal" },
+  ],
+  variable: "--font-sans",
+  display: "swap",
+  fallback: ["system-ui", "-apple-system", "Segoe UI", "Roboto", "Arial", "sans-serif"],
+});
+const mono = localFont({
+  src: [
+    { path: "./fonts/jetbrains-mono-latin-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/jetbrains-mono-latin-600-normal.woff2", weight: "600", style: "normal" },
+  ],
+  variable: "--font-mono",
+  display: "swap",
+  fallback: ["ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"],
+});
 
 // GitHub Pages sirve el sitio en /<repo>/: manifest e iconos tienen que colgar
 // de ese prefijo o el navegador pide /manifest.webmanifest y recibe un 404.
@@ -17,7 +42,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#04070d",
+  themeColor: "#070b11",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -25,7 +50,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es">
+    <html lang="es" className={`${inter.variable} ${mono.variable}`}>
       <body>{children}</body>
     </html>
   );
