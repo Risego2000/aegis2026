@@ -1,0 +1,22 @@
+name: AEGIS temporary sync
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply viewer patch and remove temporary files
+        run: |
+          set -euo pipefail
+          printf '%s  %s\n' 'd14e983ad320b6a20cd97cf586acb41172cb2e7aa5f9c1c9666707c28843a855' '.github/aegis-sync.patch.gz' | sha256sum -c -
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          gzip -dc .github/aegis-sync.patch.gz | git am --3way
+          git rm .github/aegis-sync.patch.gz .github/workflows/aegis-sync.yml
+          git commit -m 'Remove temporary sync files'
+          git push origin HEAD:main
