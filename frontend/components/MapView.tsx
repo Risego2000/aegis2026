@@ -337,6 +337,11 @@ export default function MapView(props: Props) {
         const src = map.getSource(id) as maplibregl.GeoJSONSource | undefined;
         src?.setData(apiUrl(`/api/basemap/${id}`));
       }
+      for (const id of [...BASE_RASTER_IDS, ...OVERLAY_RASTER_IDS]) {
+        const spec = BASEMAP_RASTERS[id];
+        const src = map.getSource(`base-${id}`) as maplibregl.RasterTileSource | undefined;
+        src?.setTiles([apiUrl(`/api/tiles/${id}/{z}/{x}/{y}.${spec.ext}`)]);
+      }
     };
     apply();
     window.addEventListener("aegis:api-ready", apply);
@@ -490,7 +495,7 @@ export default function MapView(props: Props) {
         if (!spec) return;
         map.addSource(`base-${id}`, {
           type: "raster",
-          tiles: [`/api/tiles/${id}/{z}/{x}/{y}.${spec.ext}`],
+          tiles: [apiUrl(`/api/tiles/${id}/{z}/{x}/{y}.${spec.ext}`)],
           tileSize: 256,
           maxzoom: spec.maxzoom,
         });
