@@ -27,7 +27,7 @@ jobs:
       - name: Instalar y compilar el cliente
         working-directory: frontend
         env:
-          AEGIS_API: ${{ vars.AEGIS_API }}
+          NEXT_PUBLIC_AEGIS_API: ${{ vars.AEGIS_API }}
         run: |
           npm ci
           npm run build
