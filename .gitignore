@@ -30,10 +30,6 @@ backend/data/tiles/
 .ssh/
 .arena/
 
-# datos geográficos pesados: se descargan con scripts/fetch_geo.py
-data/geo/roads.geojson.gz
-data/geo/railroads.geojson
-
 # copias de seguridad y cachés del backend
 data/backups/
 data/cache/
@@ -43,3 +39,7 @@ backend/data/
 LINK_CLOUDFLARE.txt
 LINK_LHR.txt
 data/health_links.json
+
+# estado en tiempo de ejecución (logs y marcas)
+data/alertas_enlace.log
+data/.last_backup
