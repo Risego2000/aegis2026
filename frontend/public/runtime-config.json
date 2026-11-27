@@ -1,4 +1,4 @@
 {
-  "_leeme": "Origen público del backend AEGIS, leído por el cliente al arrancar (cache: no-store). En local, vacío = mismo origen que el cliente. En GitHub Pages el workflow AEGIS · Pages reescribe este fichero con la variable AEGIS_API (o el input api_url) antes de compilar y no publica si la API no responde. Para un cambio inmediato sin desplegar, abre el mapa con ?api=https://tu-backend. Prioridad: ?api= > este fichero > NEXT_PUBLIC_AEGIS_API.",
+  "_leeme": "Origen público del backend AEGIS, leído por el cliente al arrancar (cache: no-store). En local, vacío = mismo origen que el cliente. En GitHub Pages el workflow AEGIS · Pages reescribe este fichero con la variable AEGIS_API (o el input api_url) antes de compilar y avisa si la API no responde. Para un cambio inmediato sin desplegar, abre el mapa con ?api=https://tu-backend. Prioridad: ?api= > este fichero > NEXT_PUBLIC_AEGIS_API.",
   "api": ""
 }

@@ -2,8 +2,9 @@
 //
 // En GitHub Pages no hay backend en el mismo origen: el cliente lee este fichero
 // al arrancar. El workflow AEGIS · Pages lo ejecuta con AEGIS_API (variable del
-// repositorio o input manual) para que el sitio publicado nunca salga con
-// `"api": ""`. En local no se ejecuta: el fichero vacío significa "mismo origen".
+// repositorio o input manual) para que el sitio publicado tenga una URL de API.
+// Si esa API está caída, el cliente se publica y muestra el aviso de desconexión.
+// En local no se ejecuta: el fichero vacío significa "mismo origen".
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";

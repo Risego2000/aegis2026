@@ -120,8 +120,9 @@ El cliente resuelve el origen de la API en este orden:
 
 En el fichero, `"api": ""` significa «sin opinión» y se respeta el valor de
 compilación. En GitHub Pages el workflow **AEGIS · Pages** reescribe ese fichero
-con `AEGIS_API` antes de compilar, comprueba que `/api/health` responde y no
-publica si la URL falta o está muerta. También acepta el input manual `api_url`
+con `AEGIS_API` antes de compilar y advierte si `/api/health` no responde. El
+cliente se publica igualmente y muestra el aviso de API desconectada hasta que
+se configure una URL estable. También acepta el input manual `api_url`
 para repuntar una publicación sin cambiar la variable. El prefijo del sitio
 (`NEXT_BASE_PATH`) se aplica también al manifest, al icono y al service worker,
 que antes se pedían a la raíz y daban 404 en GitHub Pages.
@@ -135,15 +136,16 @@ que antes se pedían a la raíz y daban 404 en GitHub Pages.
 
 El cliente publicado necesita saber dónde está la API: se configura en
 *Settings → Secrets and variables → Actions → **Variables** → `AEGIS_API`* con la
-URL pública del backend (por ejemplo `https://tu-tunel.trycloudflare.com`). Al
+URL pública y estable del backend. Los túneles temporales `trycloudflare.com`
+dejan de funcionar cuando termina su proceso y no sirven como URL permanente. Al
 cambiar la variable, lanza el workflow **AEGIS · Pages** (`workflow_dispatch`) y
 el sitio se recompila apuntando a la nueva URL: el workflow escribe esa URL en
-`runtime-config.json` y verifica que la API responde antes de publicar. Para una
+`runtime-config.json` y avisa si la API no responde. Para una
 publicación puntual, el mismo workflow acepta el input **`api_url`**, que tiene
 prioridad sobre la variable sin tocar la configuración del repositorio. Si el
 backend cambia de sitio sin querer recompilar, un `?api=` en la URL lo repunta
-solo para ese navegador. Sin una URL viva, Pages no publica una versión nueva y
-la salud de lo publicado se pone en rojo.
+solo para ese navegador. Sin una URL viva, Pages publica el cliente y el mapa
+muestra el aviso de API desconectada; la vigilancia de salud se pone en rojo.
 
 El backend ya envía `Access-Control-Allow-Origin: *` (configurable con
 `CORS_ORIGINS`), así que no hace falta tocar nada más.

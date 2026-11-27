@@ -42,24 +42,21 @@ jobs:
           AEGIS_API: ${{ github.event.inputs.api_url || vars.AEGIS_API }}
         run: node scripts/write-runtime-config.mjs
 
-      - name: Comprobar la API antes de publicar
+      # Pages puede publicar el cliente aunque el backend externo esté caído.
+      # La comprobación informa del problema; health.yml sigue vigilándolo.
+      - name: Comprobar la API pública
         working-directory: frontend
         run: |
           set -euo pipefail
           API=$(node -p "require('./public/runtime-config.json').api")
           echo "API configurada: $API"
           code=""
-          for attempt in $(seq 1 12); do
-            code=$(curl -sSL -o /tmp/aegis-health.json -m 20 -w '%{http_code}' "${API}/api/health" || true)
-            if [ "$code" = "200" ] && grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"' /tmp/aegis-health.json; then
-              echo "La API responde en ${API}/api/health"
-              exit 0
-            fi
-            echo "Intento ${attempt}/12: HTTP ${code:-sin respuesta}; espero 5 s"
-            sleep 5
-          done
-          echo "::error::La API ${API} no responde en /api/health (HTTP ${code:-sin respuesta}). No se publica un mapa sin datos: corrige la variable AEGIS_API o relanza AEGIS · Pages con el input api_url."
-          exit 1
+          code=$(curl -sSL -o /tmp/aegis-health.json -m 20 -w '%{http_code}' "${API}/api/health" || true)
+          if [ "$code" = "200" ] && grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"' /tmp/aegis-health.json; then
+            echo "La API responde en ${API}/api/health"
+          else
+            echo "::warning::La API ${API} no responde en /api/health (HTTP ${code:-sin respuesta}). Se publica el cliente, pero el mapa mostrará el aviso de API desconectada hasta configurar una URL estable en AEGIS_API."
+          fi
 
       - name: Compilar el cliente
         working-directory: frontend
