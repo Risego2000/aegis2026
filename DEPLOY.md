@@ -46,11 +46,14 @@ Claves opcionales (nunca en el repo):
 fly secrets set AISSTREAM_API_KEY=... FIRMS_MAP_KEY=... OPENAI_API_KEY=...
 ```
 
-## Opción 3 · Render
+## Opción 3 · Render Free
 
 `render.yaml` es un blueprint: New → Blueprint → repo → Render construye el
-`Dockerfile`, monta 1 GB en `/data` y pone el healthcheck en `/api/health`.
-El plan `free` no admite discos; usa `starter`.
+`Dockerfile` y pone el healthcheck en `/api/health`. El plan gratuito ofrece
+una URL HTTPS estable, pero duerme el servicio tras un periodo sin tráfico;
+el primer acceso posterior puede tardar. No admite discos persistentes:
+SQLite vive en `/tmp` y se pierde al reiniciar o redesplegar. Es útil para
+poner el mapa en marcha gratis, no para conservar casos o histórico.
 
 ## Opción 4 · Oracle Cloud Always Free (la caja del proyecto)
 
@@ -85,10 +88,10 @@ El cliente resuelve la API en cascada, **sin recompilar**:
 4. Mismo origen (cuando API y cliente se sirven juntos, como en el contenedor).
 
 En GitHub Pages no edites el fichero a mano: el workflow **AEGIS · Pages** lo
-reescribe con `vars.AEGIS_API` (o el input `api_url`), comprueba que
-`/api/health` responde y aborta si la API falta o está caída. Después verifica
-que el `runtime-config.json` dentro de `frontend/out` lleva esa URL. Así el
-sitio no se publica con `"api": ""` ni con un túnel muerto.
+reescribe con `vars.AEGIS_API` (o el input `api_url`) y advierte si
+`/api/health` no responde. Después verifica que el `runtime-config.json`
+dentro de `frontend/out` lleva esa URL. El cliente se publica incluso si la
+API está caída, y muestra el aviso de desconexión hasta recuperarla.
 
 ## Variables de entorno
 

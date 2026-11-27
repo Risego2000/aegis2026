@@ -1,23 +1,19 @@
-# Render: alternativa sin CLI, con disco persistente para SQLite.
+# Render Free: URL HTTPS estable sin disco persistente.
 #
 # En el panel de Render: New → Blueprint → conecta este repo. Render lee este
-# fichero, construye el Dockerfile y monta el disco en /data.
+# fichero y construye el Dockerfile. SQLite se reinicia al dormir o redesplegar.
 services:
   - type: web
     name: aegis-osint
     runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: starter              # el plan free no admite discos persistentes
+    plan: free
     region: frankfurt
     healthCheckPath: /api/health
     autoDeploy: true
-    disk:
-      name: aegis-data
-      mountPath: /data
-      sizeGB: 1
     envVars:
       - key: SQLITE_PATH
-        value: /data/aegis.sqlite
+        value: /tmp/aegis.sqlite
       - key: FRONTEND_DIR
         value: /app/frontend/out
       - key: RETENTION_DAYS
@@ -26,10 +22,3 @@ services:
         value: "true"
       - key: TLP
         value: CLEAR
-      # Claves opcionales: se marcan `sync: false` para ponerlas en el panel.
-      - key: AISSTREAM_API_KEY
-        sync: false
-      - key: FIRMS_MAP_KEY
-        sync: false
-      - key: OPENAI_API_KEY
-        sync: false

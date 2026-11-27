@@ -199,10 +199,11 @@ MIT. Los datos pertenecen a sus fuentes y se usan según sus términos abiertos.
 
 El sitio de GitHub Pages es solo el cliente: para que el mapa tenga datos hace
 falta ejecutar la API. `Dockerfile`, `docker-compose.yml`, `fly.toml` y
-`render.yaml` la empaquetan en un contenedor (FastAPI + cliente estático +
-SQLite en un volumen). El workflow de Pages escribe la URL en
-`frontend/public/runtime-config.json` antes de compilar y no publica si esa API
-no responde; para una prueba inmediata, `?api=` repunta solo tu navegador.
+`render.yaml` la empaquetan en un contenedor (FastAPI + cliente estático).
+Render Free ofrece una URL HTTPS estable, pero suspende el servicio sin tráfico
+y no conserva SQLite entre reinicios; las opciones con volumen sí conservan los
+datos. El workflow de Pages escribe la URL en `runtime-config.json` antes de
+compilar y advierte si la API no responde; `?api=` repunta solo tu navegador.
 
 Guía completa, variables y endpoints nuevos: [DEPLOY.md](DEPLOY.md).
 
