@@ -1,7 +1,10 @@
-fastapi>=0.115
-uvicorn[standard]>=0.34
-httpx>=0.28
-sgp4>=2.23
-python-dotenv>=1.0
-websockets>=13.0
-pyshp>=2.3   # solo para scripts/fetch_geo.py (conversión del shapefile de ferrocarril)
+# Versiones fijadas: el proyecto se probó con estas y el CI instala exactamente
+# las mismas. Antes eran rangos (`>=`) y una subida de FastAPI o httpx podía
+# romper el arranque sin que nadie tocara el código.
+fastapi==0.165.0
+uvicorn[standard]==0.54.0
+httpx==0.29.0
+sgp4==2.27
+python-dotenv==1.2.4
+websockets==17.4
+pyshp==3.1.9   # solo para scripts/fetch_geo.py (conversión del shapefile de ferrocarril)

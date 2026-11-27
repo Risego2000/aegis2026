@@ -1,0 +1,4 @@
+{
+  "_leeme": "Origen público del backend AEGIS, leído por el cliente al arrancar (cache: no-store). Vacío = mismo origen que el cliente. Cambiar esta URL y volver a publicar el sitio repunta el mapa sin recompilar el JavaScript; para un cambio inmediato sin desplegar, abre el mapa con ?api=https://tu-backend. Prioridad: ?api= > este fichero > NEXT_PUBLIC_AEGIS_API.",
+  "api": ""
+}

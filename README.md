@@ -41,38 +41,78 @@ estático en GitHub Pages apuntando a la API desde la variable `AEGIS_API`.
 ## Arranque
 
 ```bash
-# 1. dependencias
-pip install -r backend/requirements.txt
-cd frontend && npm install && cd ..
+# 1. dependencias: backend en un entorno virtual propio y cliente con el lockfile
+make install          # crea .venv, instala requirements y hace npm ci
 
 # 2. datos geográficos que no se versionan (red viaria y ferrocarril)
-python3 scripts/fetch_geo.py
+make geo              # o: python3 scripts/fetch_geo.py
 
-# 3. backend (puerto 8000) y frontend (puerto 3000)
-cd backend && python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000
-cd frontend && npm run dev
+# 3. backend (puerto 8000) y cliente de desarrollo (puerto 3001)
+make backend          # cd backend && .venv/bin/python -m uvicorn app.main:app
+make frontend
 ```
 
-El frontend de desarrollo llama a `/api/*`; en producción se sirve el export
-estático (`frontend/site/`) desde el propio backend.
+El cliente de desarrollo llama a `/api/*` (rewrite de Next a `127.0.0.1:8000`);
+en producción se sirve el export estático (`frontend/out` o `frontend/site`)
+desde el propio backend.
+
+> El backend no se instala con `pip install` global: en Debian/Ubuntu con Python
+> «gestionado por el sistema» (PEP 668) eso falla. `make install` usa `.venv`,
+> que ya está en `.gitignore`. Las versiones de `backend/requirements.txt` están
+> fijadas: el CI instala exactamente las mismas.
 
 ### Variables de entorno
 
 Todas son opcionales: la aplicación funciona sin ninguna. Ver `.env.example`.
 
+### Comprobaciones
+
+```bash
+make check     # tipos (tsc), lint (ESLint) y tests de backend, sin red
+make smoke     # 29 comprobaciones contra un servidor en marcha
+```
+
+- `backend/tests/` (pytest): contrato HTTP con las fuentes apagadas y SQLite
+  temporal, así que no depende de que USGS o GDELT respondan. El workflow
+  `AEGIS · CI` ejecuta los tests, `tsc`, ESLint y el export estático en cada
+  push y en cada PR.
+- `scripts/smoke.py`: 29 comprobaciones contra una instancia real (capas, GTFS,
+  fotograma de cámara, exportaciones y guarda de ingesta).
+- `AEGIS · salud de lo publicado` sondea cada 30 minutos la API que usa el sitio
+  de GitHub Pages (`vars.AEGIS_API`) y se pone en rojo si no responde.
+
+### Repuntar la API sin recompilar
+
+El cliente resuelve el origen de la API en este orden:
+
+1. `?api=https://mi-backend` en la URL del mapa — cambio inmediato, sin desplegar
+   (sirve para recuperar el sitio publicado mientras se arregla el túnel).
+2. `frontend/public/runtime-config.json` → `{ "api": "https://mi-backend" }` — se
+   lee en tiempo de ejecución; no hay que recompilar el JavaScript.
+3. `NEXT_PUBLIC_AEGIS_API` en tiempo de compilación (lo que usa el workflow de
+   Pages).
+4. Nada: rutas relativas contra el mismo origen.
+
+En el fichero, `"api": ""` significa «sin opinión» y se respeta el valor de
+compilación. El prefijo del sitio (`NEXT_BASE_PATH`) se aplica también al
+manifest, al icono y al service worker, que antes se pedían a la raíz y daban
+404 en GitHub Pages.
+
 ## Despliegue
 
 | Pieza | Dónde | Cómo |
 |---|---|---|
-| **Cliente** (mapa) | GitHub Pages · `https://risego2000.github.io/aegis2026/` | workflow `AEGIS · Pages`, se compila con `NEXT_BASE_PATH=/aegis2026` |
+| **Cliente** (mapa) | GitHub Pages · `https://risego2000.github.io/aegis2026/` | workflow `AEGIS · Pages`, se compila con `NEXT_BASE_PATH=/aegis2026`; la API se puede repuntar después con `runtime-config.json` o `?api=` |
 | **API** (motor OSINT) | tu servidor o un túnel | `cd backend && python3 -m uvicorn app.main:app --port 8000` |
 
 El cliente publicado necesita saber dónde está la API: se configura en
 *Settings → Secrets and variables → Actions → **Variables** → `AEGIS_API`* con la
 URL pública del backend (por ejemplo `https://tu-tunel.trycloudflare.com`). Al
 cambiar la variable, lanza el workflow **AEGIS · Pages** (`workflow_dispatch`) y
-el sitio se recompila apuntando a la nueva URL. Sin la variable, el sitio carga
-la interfaz y muestra el aviso de que la API no responde.
+el sitio se recompila apuntando a la nueva URL. Si el backend cambia de sitio
+sin querer recompilar, `runtime-config.json` (o un `?api=` en la URL) lo repunta
+en caliente. Sin variable ni fichero, el sitio carga la interfaz y muestra el
+aviso de que la API no responde.
 
 El backend ya envía `Access-Control-Allow-Origin: *` (configurable con
 `CORS_ORIGINS`), así que no hace falta tocar nada más.
@@ -89,13 +129,17 @@ bash scripts/tunnel_backup.sh # ssh a localhost.run
 ```
 backend/app/
   api/routes.py        todos los endpoints (/api/events, /live/*, /basemap/*, /media/*)
+  api/limits.py        tope de peticiones por IP en las rutas caras
+  tests/               pytest: contrato HTTP y lógica pura, sin red
   ingest/              un módulo por fuente (usgs, firms, adsb, ais, trains, gtfs…)
   storage/sqlite.py    SQLite + R-Tree (eventos, deduplicación, pruner)
   live.py              capas vivas (aeronaves, buques, trenes, satélites)
 frontend/
   components/MapView.tsx   motor del mapa (MapLibre), capas e iconos
   components/RightPanel.tsx fichas: suceso, elemento, cámara, lugar, amenazas
+  lib/api.ts            cliente HTTP y origen de la API en tiempo de ejecución
   lib/mapIcons.ts           los 16 iconos dibujados en canvas
+  public/runtime-config.json  origen de la API sin recompilar
 scripts/
   fetch_geo.py         descarga y prepara la cartografía base
   smoke.py             29 comprobaciones de humo contra un servidor
@@ -117,3 +161,28 @@ capas encendidas. Lo que importa para no colgar el navegador:
 ## Licencia
 
 MIT. Los datos pertenecen a sus fuentes y se usan según sus términos abiertos.
+
+## Backend permanente
+
+El sitio de GitHub Pages es solo el cliente: para que el mapa tenga datos hace
+falta ejecutar la API. `Dockerfile`, `docker-compose.yml`, `fly.toml` y
+`render.yaml` la empaquetan en un contenedor (FastAPI + cliente estático +
+SQLite en un volumen) y el cliente se puede repuntar sin recompilar con
+`?api=` o `frontend/public/runtime-config.json`.
+
+Guía completa, variables y endpoints nuevos: [DEPLOY.md](DEPLOY.md).
+
+## Panel de analista
+
+La pestaña **⌘ Analista** del panel derecho reúne lo que hasta ahora solo estaba
+en la API: SITREP descargable, patrones (calidad GNSS y anomalías AIS), casos
+con cadena de custodia SHA-256 y verificación, grafo de vínculos con export
+GraphML, reproducción histórica con deslizador y transparencia de fuentes.
+
+Además, el servidor emite **alertas de patrón** por el canal en vivo (no solo de
+geovalla): squawk de emergencia, posición estancada, buque que se apaga o salta,
+tren con más de 20 min de retraso, repunte de focos térmicos y celdas con varias
+aeronaves degradadas. Cada patrón tiene 30 min de enfriamiento.
+
+Para comprobar IODA en tu servidor (la API no responde desde todas las redes):
+`python3 scripts/check_ioda.py`.

@@ -15,6 +15,7 @@ export const CATEGORY_META: Record<string, { label: string; color: string; icon:
   cyber: { label: "Ciberataque", color: "#ce93d8", icon: "⌘" },
   trafico: { label: "Tráfico", color: "#ffd166", icon: "⛗" },
   transporte: { label: "Transporte", color: "#ffb454", icon: "⛉" },
+  network: { label: "Red / Internet", color: "#7c9cff", icon: "⌁" },
 };
 
 /** Qué significa cada categoría, para explicarlo dentro de la ficha. */
@@ -35,6 +36,7 @@ export const CATEGORY_DESC: Record<string, string> = {
   health: "Brotes, alertas sanitarias y emergencias de salud pública.",
   trafico: "Incidencia de tráfico en tiempo real publicada por la DGT (DATEX II): accidentes, obras, cortes, obstáculos y restricciones, con carretera y punto kilométrico.",
   transporte: "Aviso de servicio de un operador de transporte público (Renfe): reajustes, obras y cancelaciones que afectan a una línea.",
+  network: "Caída de alcanzabilidad de internet medida por IODA (Georgia Tech) con tres señales independientes: BGP, sondas activas y telescopio de red. No es una denuncia: es una medición por país.",
 };
 
 /** Nombre en español de cada fuente de datos. */
@@ -52,6 +54,7 @@ export const SOURCE_ES: Record<string, string> = {
   air: "OpenAQ · calidad del aire",
   satellites: "CelesTrak · órbitas",
   osint: "Consolidado multi-fuente",
+  ioda: "IODA · cortes de internet",
 };
 
 export function sourceEs(src?: string | null): string {

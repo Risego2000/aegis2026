@@ -9,9 +9,17 @@
  *     muestra como notificación nativa.
  *
  * Nunca cachea /api/: los datos en vivo siempre vienen de la red.
+ *
+ * Ojo con el prefijo: en GitHub Pages el sitio vive en /<repo>/, así que el
+ * armazón y los assets cuelgan de `self.registration.scope` y no de la raíz
+ * del dominio (antes `/` era el README del repositorio, no la aplicación).
  */
+const SCOPE = new URL(self.registration.scope);
+const BASE = SCOPE.pathname.replace(/\/+$/, "");
+const AT = (path) => `${BASE}${path}`;
+
 const CACHE = "aegis-v1";
-const SHELL = ["/", "/icon.svg", "/manifest.webmanifest"];
+const SHELL = [AT("/"), AT("/icon.svg"), AT("/manifest.webmanifest")];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -40,10 +48,10 @@ self.addEventListener("fetch", (event) => {
       fetch(req)
         .then((res) => {
           const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put("/", copy)).catch(() => {});
+          caches.open(CACHE).then((c) => c.put(AT("/"), copy)).catch(() => {});
           return res;
         })
-        .catch(() => caches.match("/").then((hit) => hit || Response.error()))
+        .catch(() => caches.match(AT("/")).then((hit) => hit || Response.error()))
     );
     return;
   }
@@ -53,7 +61,7 @@ self.addEventListener("fetch", (event) => {
     caches.match(req).then((hit) => {
       if (hit) return hit;
       return fetch(req).then((res) => {
-        if (res.ok && (url.pathname.startsWith("/_next/static/") || url.pathname === "/icon.svg")) {
+        if (res.ok && (url.pathname.startsWith(AT("/_next/static/")) || url.pathname === AT("/icon.svg"))) {
           const copy = res.clone();
           caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
         }
@@ -70,7 +78,7 @@ self.addEventListener("notificationclick", (event) => {
       for (const client of list) {
         if (client.url.includes(self.location.origin) && "focus" in client) return client.focus();
       }
-      return self.clients.openWindow("/");
+      return self.clients.openWindow(AT("/"));
     })
   );
 });

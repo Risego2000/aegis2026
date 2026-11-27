@@ -13,6 +13,9 @@ const nextConfig = {
   // no hay prefijo y todo sigue igual.
   basePath: process.env.NEXT_BASE_PATH || "",
   assetPrefix: process.env.NEXT_BASE_PATH || "",
+  // El prefijo se incrusta también en el código del cliente: manifest, icono,
+  // service worker y `runtime-config.json` cuelgan de él, no de la raíz.
+  env: { NEXT_PUBLIC_BASE_PATH: process.env.NEXT_BASE_PATH || "" },
   eslint: { ignoreDuringBuilds: true },
   // Los tipos se comprueban aparte con `./node_modules/.bin/tsc --noEmit`
   // (dentro de `make check`): el paso de tipos del build lanza un worker que el

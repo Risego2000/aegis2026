@@ -53,6 +53,11 @@ def _event_json(ev: Event) -> dict[str, Any]:
     data["severity_label"] = ev.severity_label
     data["severity_text"] = SEVERIDAD_ES.get(ev.severity_label, ev.severity_label)
     data["country_es"] = es_region(ev.country)
+    # Graduación NATO AJP-2.1 + TLP, calculada en lectura: los eventos que ya
+    # están en la base también salen graduados, sin migrar el esquema.
+    from ..extras import tradecraft
+
+    data.update(tradecraft.grade_event(ev))
     if ev.summary:
         resumen = ev.summary
         if ev.source == "gdelt":
@@ -101,8 +106,9 @@ async def get_config(request: Request) -> dict[str, Any]:
             "gdelt": settings.enable_gdelt,
             "adsb": settings.enable_adsb,
             "ais": settings.enable_ais,
-            "firms": settings.enable_firms and bool(settings.firms_map_key),
+            "firms": settings.enable_firms,
             "satellites": settings.enable_satellites,
+            "ioda": settings.enable_ioda,
         },
         "hotspots": {k: {"lat": v[0], "lon": v[1], "radius_nm": v[2]} for k, v in HOTSPOTS.items()},
         "fence_engine": "tile38" if settings.tile38_url else "in-process",
@@ -940,11 +946,20 @@ async def trains_index() -> dict[str, Any]:
 
 
 @router.get("/api/poll")
-async def api_poll(request: Request, since: int = Query(0, ge=0), wait: int = Query(18, ge=0, le=25)) -> dict[str, Any]:
-    """Long-polling del canal en vivo (atraviesa cualquier proxy; ver api/stream.py)."""
+async def api_poll(
+    request: Request,
+    since: int = Query(0, ge=0),
+    wait: int = Query(18, ge=0, le=25),
+    alert_since: int = Query(0, ge=0, alias="as"),
+) -> dict[str, Any]:
+    """Long-polling del canal en vivo (atraviesa cualquier proxy; ver api/stream.py).
+
+    `since` es el cursor de sucesos y `as` el de avisos; ambos se reenvían: si no,
+    el aviso llegaba al servidor y moría ahí.
+    """
     from .stream import api_poll as _poll
 
-    return await _poll(request, since, wait)
+    return await _poll(request, since, wait, alert_since)
 
 
 @router.get("/api/stream/stats")

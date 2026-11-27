@@ -21,14 +21,19 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from .api import limits as limits_mod
 from .api import routes as routes_mod
 from .api.routes import router
 from .config import ROOT, settings
+from .extras.api import router as extras_router
+from .extras.storage import ExtrasStore
 from .fence.engine import GeofenceEngine
 from .ingest import satellites as sats_mod
 from .ingest.client import Fetcher
 from .ingest.gtfs import GtfsIndex
 from .ingest.registry import Registry
+from .live import AIRCRAFT, VESSELS
+from .livehub import HUB
 from .storage import make_store
 
 logging.basicConfig(
@@ -135,12 +140,24 @@ async def lifespan(app: FastAPI):
     app.state.registry = registry
     app.state.gtfs = gtfs_index
 
-    # Warm the orbital catalogue off the critical path.
+    # Capa de analista: watchlists, casos con cadena de custodia y muestreo de
+    # posiciones. Es un almacén aparte dentro del mismo SQLite; si fallara, el
+    # mapa seguiría funcionando sin estas funciones.
+    extras = ExtrasStore(settings.sqlite_path)
     try:
-        await sats_mod.refresh_tles(fetcher)
-        sats_mod.propagate_all()
+        extras.init()
     except Exception as exc:  # noqa: BLE001
-        log.warning("catálogo orbital no disponible al arrancar: %s", exc)
+        log.warning("almacén de analista no disponible: %s", exc)
+    app.state.extras = extras
+    registry.extras = extras
+
+    # Warm the orbital catalogue off the critical path.
+    if settings.enable_satellites:
+        try:
+            await sats_mod.refresh_tles(fetcher)
+            sats_mod.propagate_all()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("catálogo orbital no disponible al arrancar: %s", exc)
 
     await registry.start()
 
@@ -201,13 +218,72 @@ async def lifespan(app: FastAPI):
 
     mem_task = asyncio.create_task(guardian_memoria())
 
-    log.info("AEGIS listo — http://%s:%s", settings.host, settings.port)
+    async def muestreo_posiciones():
+        """Fotografía periódica de aeronaves y buques para la reproducción.
+
+        Cada 5 minutos y con 6 h de retención: ~70 k filas como mucho, unos
+        pocos MB. Es lo que permite volver atrás en el tiempo sin que el
+        archivo de sucesos crezca.
+        """
+        if not settings.playback_enabled:
+            return
+        await asyncio.sleep(30)
+        while True:
+            try:
+                rows: list[tuple[str, str, float, float, float, float, float]] = []
+                for kind, layer in (("aircraft", AIRCRAFT), ("vessels", VESSELS)):
+                    for actor_id, actor in list(layer.items.items()):
+                        lat, lon = actor.get("lat"), actor.get("lon")
+                        if lat is None or lon is None:
+                            continue
+                        rows.append((
+                            kind, str(actor_id), float(lat), float(lon),
+                            float(actor.get("alt") or actor.get("altitude") or 0),
+                            float(actor.get("speed") or actor.get("speed_kn") or 0),
+                            float(actor.get("track") or actor.get("course") or 0),
+                        ))
+                saved = extras.save_positions(rows)
+                pruned = extras.prune_positions(settings.playback_hours)
+                if saved or pruned:
+                    log.debug("playback: %d posiciones, %d podadas", saved, pruned)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("muestreo de posiciones: %s", exc)
+            await asyncio.sleep(max(60, settings.playback_interval))
+
+    playback_task = asyncio.create_task(muestreo_posiciones())
+
+    async def patrones():
+        """Alertas de comportamiento anómalo, no solo de geovalla.
+
+        Cada 5 minutos se miran los datos vivos (squawk de emergencia, posición
+        estancada, buque que se apaga, tren con retraso, repunte de focos,
+        celdas GNSS degradadas) y lo nuevo se empuja a `/ws/alerts`.
+        """
+        await asyncio.sleep(90)
+        while True:
+            try:
+                from .extras import patterns as patterns_mod
+
+                events = await store.query_bbox(
+                    (-180.0, -85.0, 180.0, 85.0), since_hours=24, limit=3000
+                )
+                patterns_mod.scan(events, extras, HUB)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("patrones: %s", exc)
+            await asyncio.sleep(300)
+
+    patterns_task = asyncio.create_task(patrones())
+
+    log.info("AEGIS listo · API en /api · cliente estático en %s", settings.frontend_dir)
     try:
         yield
     finally:
         prune_task.cancel()
         mem_task.cancel()
+        playback_task.cancel()
+        patterns_task.cancel()
         await registry.stop()
+        extras.close()
         await fetcher.close()
         await store.close()
 
@@ -231,6 +307,32 @@ app.add_middleware(
 )
 
 @app.middleware("http")
+async def rate_limit(request: Request, call_next):
+    """Tope de peticiones por IP en las rutas caras (export, IA, fotogramas).
+
+    Sin esto, un script podía pedir exportaciones completas o informes de IA en
+    bucle: la API es pública y no tiene claves.
+    """
+    verdict = limits_mod.check(
+        request.method,
+        request.url.path,
+        (request.client.host if request.client else "") or "desconocido",
+    )
+    if verdict is not None:
+        retry_after, limit = verdict
+        return JSONResponse(
+            {
+                "error": "demasiadas peticiones",
+                "detail": f"límite de {limit} por minuto en esta ruta",
+                "retry_after_s": retry_after,
+            },
+            status_code=429,
+            headers={"Retry-After": str(retry_after)},
+        )
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def production_headers(request: Request, call_next):
     """Cabeceras de producción: caché larga para assets con hash, corta para API.
 
@@ -252,6 +354,7 @@ async def production_headers(request: Request, call_next):
 
 
 app.include_router(router)
+app.include_router(extras_router)
 
 
 @app.get("/api")
@@ -264,6 +367,9 @@ async def api_root() -> dict:
             "/api/health", "/api/stats", "/api/events", "/api/live/aircraft",
             "/api/live/vessels", "/api/live/satellites", "/api/fences", "/api/alerts",
             "/api/ai/briefing", "/api/ai/status", "/ws/alerts",
+            "/api/gnss", "/api/anomalies", "/api/watchlists", "/api/cases",
+            "/api/graph", "/api/graph/export", "/api/playback",
+            "/api/country/{iso3}", "/api/report/sitrep", "/api/export/stix",
         ],
     }
 
@@ -280,8 +386,9 @@ if FRONTEND_DIR.exists() and (FRONTEND_DIR / "index.html").exists():
     @app.api_route("/{full_path:path}", methods=["GET", "HEAD"])
     async def spa(full_path: str):
         candidate = (FRONTEND_DIR / full_path).resolve()
-        # sin fugas fuera del directorio del cliente
-        if full_path and str(candidate).startswith(str(FRONTEND_DIR.resolve())) and candidate.is_file():
+        # sin fugas fuera del directorio del cliente (comparación por ruta, no
+        # por prefijo de cadena: `site_backup/` no cuela como `site/`)
+        if full_path and candidate.is_relative_to(FRONTEND_DIR.resolve()) and candidate.is_file():
             return FileResponse(candidate)
         if "." in Path(full_path).name:      # asset inexistente: 404 real, no HTML
             return JSONResponse({"error": "not found", "path": full_path}, status_code=404)

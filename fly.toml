@@ -1,0 +1,50 @@
+# Fly.io: el backend permanente más barato para un proceso Python + SQLite.
+#
+#   fly launch --no-deploy --copy-config --name aegis-osint
+#   fly volumes create aegis_data --size 1
+#   fly deploy
+#
+# `fly.toml` no guarda secretos: las claves van con `fly secrets set`.
+app = "aegis-osint"
+primary_region = "mad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  HOST = "0.0.0.0"
+  PORT = "8000"
+  SQLITE_PATH = "/data/aegis.sqlite"
+  FRONTEND_DIR = "/app/frontend/out"
+  RETENTION_DAYS = "7"
+  PLAYBACK_ENABLED = "true"
+
+[[mounts]]
+  source = "aegis_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "suspend"   # coste casi cero cuando nadie mira
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 60
+    hard_limit = 120
+
+[[http_service.checks]]
+  interval = "30s"
+  timeout = "6s"
+  grace_period = "45s"
+  method = "GET"
+  path = "/api/health"
+
+[[vm]]
+  # 256 MB sobra para el mapa; la retención de 7 días mantiene la base pequeña.
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1

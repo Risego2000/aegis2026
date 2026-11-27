@@ -5,14 +5,16 @@ import type {
   ActorDetail, ActorKind, Alert, AppConfig, Briefing, EventFeature, Health, NearbyHit, SourceStatus,
 } from "@/lib/types";
 import ActorCard from "@/components/ActorCard";
+import AnalystPanel from "@/components/AnalystPanel";
 import CameraView from "@/components/CameraView";
 import PlacePanel, { type PlaceData } from "@/components/PlacePanel";
 import {
   CATEGORY_DESC, categoryMeta, esError, fechaExacta, fmtDistance, fmtNumber, markdownToHtml,
   SEVERITY_COLOR as severityColor, sourceEs, timeAgo,
 } from "@/lib/format";
+import { apiUrl } from "@/lib/api";
 
-export type Tab = "actor" | "camera" | "detail" | "place" | "briefing" | "threats" | "alerts" | "sources";
+export type Tab = "actor" | "camera" | "detail" | "place" | "briefing" | "threats" | "alerts" | "sources" | "analyst";
 
 type Props = {
   open?: boolean;
@@ -79,6 +81,7 @@ const TABS: { key: Tab; label: string; icon: string; hint: string }[] = [
   { key: "briefing", label: "Informe", icon: "▤", hint: "Informe redactado con los datos de la zona" },
   { key: "alerts", label: "Alertas", icon: "✦", hint: "Avisos de las zonas vigiladas" },
   { key: "sources", label: "Fuentes", icon: "⇄", hint: "Estado y detalle de las 25 fuentes abiertas" },
+  { key: "analyst", label: "Analista", icon: "⌘", hint: "SITREP, patrones, casos con cadena de custodia, grafo y reproducción" },
 ];
 
 export default function RightPanel(p: Props) {
@@ -137,6 +140,13 @@ export default function RightPanel(p: Props) {
         )}
 
         {p.tab === "detail" && <EventDetail {...p} />}
+
+        {p.tab === "analyst" && (
+          <AnalystPanel
+            selectedEventId={p.detail?.event?.id ?? p.selected?.properties?.id ?? null}
+            selectedTitle={p.detail?.event?.title ?? p.selected?.properties?.title ?? null}
+          />
+        )}
 
         {p.tab === "place" && (
           <PlacePanel
@@ -385,8 +395,15 @@ function EventDetail(p: Props) {
   const severityKey = String(ev.severity_label ?? "").toLowerCase();
   const severityColorHex = severityColor[severityKey] ?? meta.color;
   const severityText: string = ev.severity_text ?? ev.severity_label ?? "";
+  // Graduación NATO AJP-2.1 que sirve el backend en cada evento (A-F + 1-6).
+  const admiralty = ev.admiralty ? String(ev.admiralty) : "";
+  const admiraltyWhy = ev.grading ? String(ev.grading) : "";
+  const tlp = ev.tlp ? String(ev.tlp) : "";
   const when = fechaExacta(ev.event_time);
   const country = ev.country_es ?? ev.country ?? "";
+  const coords = (p.selected?.geometry as any)?.coordinates ?? [];
+  const evLat = Number(ev.lat ?? coords[1]);
+  const evLon = Number(ev.lon ?? coords[0]);
 
   return (
     <div>
@@ -438,9 +455,34 @@ function EventDetail(p: Props) {
             )}
             <dt>Confianza</dt><dd>{Math.round((ev.confidence ?? 0) * 100)} %</dd>
             <dt>Fuentes</dt><dd>{sourceList.map(sourceEs).join(" · ") || sourceEs(ev.source)}</dd>
+            {admiralty && (
+              <><dt>Grado OTAN</dt><dd title={admiraltyWhy}>{admiralty}{tlp ? ` · TLP:${tlp}` : ""}</dd></>
+            )}
             <dt>Identificador</dt><dd style={{ fontSize: 9.5 }}>{ev.id}</dd>
           </dl>
         </div>
+
+        {Number.isFinite(evLat) && Number.isFinite(evLon) && (
+          <div className="btn-row" style={{ marginBottom: 10 }}>
+            <a
+              className="btn ghost"
+              href={`https://apps.sentinel-hub.com/eo-browser/?lat=${evLat}&lng=${evLon}&zoom=13`}
+              target="_blank"
+              rel="noreferrer"
+              title="Comparar la imagen de hoy con la de hace 30 días (Sentinel-2, 10 m, gratis)"
+            >
+              ◭ Sentinel-2
+            </a>
+            <a
+              className="btn ghost"
+              href={`https://www.google.com/maps/@${evLat},${evLon},1200m/data=!3m1!1e3`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              ◉ Vista satélite
+            </a>
+          </div>
+        )}
 
         <div className="card">
           <div className="card-title"><span>Cómo interpretarlo</span></div>
@@ -555,7 +597,7 @@ function EventPhoto({ eventId }: { eventId: string }) {
     if (!eventId) { setPhoto(null); return; }
     let alive = true;
     setLoading(true);
-    fetch(`/api/events/${encodeURIComponent(eventId)}/photo`)
+    fetch(apiUrl(`/api/events/${encodeURIComponent(eventId)}/photo`))
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (alive) { setPhoto(d?.photo ?? null); setLoading(false); } })
       .catch(() => { if (alive) { setPhoto(null); setLoading(false); } });
@@ -605,7 +647,7 @@ function ThreatsPanel({ onPick, hourWindow, onWindow }: { onPick: (id: string) =
     let alive = true;
     const cargar = () => {
       setLoading(true);
-      fetch(`/api/events/priority?hours=${hourWindow}&min_score=${minScore}&limit=250`)
+      fetch(apiUrl(`/api/events/priority?hours=${hourWindow}&min_score=${minScore}&limit=250`))
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => {
           if (!alive || !d) return;

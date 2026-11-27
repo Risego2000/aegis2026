@@ -12,6 +12,7 @@ import logging
 import time
 
 from ..config import HOTSPOTS, settings
+from ..extras.gnss import aircraft_status
 from ..live import AIRCRAFT
 from .client import Fetcher
 
@@ -120,6 +121,14 @@ def normalise(ac: dict) -> dict | None:
         "mil": classify_aircraft(ac),
         "mlat": bool(ac.get("mlat")),
         "seen_pos": ac.get("seen_pos"),
+        # Calidad de la señal GNSS tal y como la declara el avión: es lo que
+        # permite detectar interferencia (NIC/NACp a 0 con posición emitida).
+        "nic": ac.get("nic"),
+        "nac_p": ac.get("nac_p") if ac.get("nac_p") is not None else ac.get("nacp"),
+        "gnss": aircraft_status({
+            "nic": ac.get("nic"),
+            "nac_p": ac.get("nac_p") if ac.get("nac_p") is not None else ac.get("nacp"),
+        }),
         "source": "adsb.lol",
     }
 

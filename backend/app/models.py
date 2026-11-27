@@ -164,6 +164,7 @@ CATEGORIES = (
     "economy",
     "news",              # generic geolocated news
     "military",
+    "network",           # cortes de internet medidos (IODA)
 )
 
 SEVERITY_ORDER = {"green": 1, "info": 1, "yellow": 2, "orange": 3, "red": 4, "critical": 5}

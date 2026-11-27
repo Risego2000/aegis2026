@@ -29,46 +29,53 @@ from ..livehub import HUB
 MAX_WAIT = 25
 
 
-async def _pending(since: int) -> dict[str, Any] | None:
+def _snapshot(since: int, alert_since: int, layers: list[str]) -> dict[str, Any]:
+    return {
+        "cursor": HUB.event_seq,
+        "alert_cursor": HUB.alert_seq,
+        "layers": layers,
+        "alerts": HUB.alerts_since(alert_since),
+        "versions": {k: str(v) for k, v in HUB.versions.items()},
+        "server_time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+
+
+async def _pending(since: int, alert_since: int) -> dict[str, Any] | None:
     """Cambios pendientes desde el cursor, o None si no hay nada nuevo."""
     changed = HUB.changes()
-    if HUB.event_seq > since or HUB.alerts or changed:
-        alerts = HUB.alerts[-20:] if HUB.alerts else []
-        return {
-            "cursor": HUB.event_seq,
-            "layers": changed,
-            "alerts": alerts,
-            "versions": {k: str(v) for k, v in HUB.versions.items()},
-            "server_time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        }
+    if HUB.event_seq > since or HUB.alert_seq > alert_since or changed:
+        return _snapshot(since, alert_since, changed)
     return None
 
 
-async def api_poll(request: Request, since: int = Query(0, ge=0), wait: int = Query(18, ge=0, le=MAX_WAIT)) -> dict:
-    """Devuelve en cuanto hay cambios; si no, late cada `wait` segundos."""
+async def api_poll(
+    request: Request,
+    since: int = Query(0, ge=0),
+    wait: int = Query(18, ge=0, le=MAX_WAIT),
+    alert_since: int = Query(0, ge=0, alias="as"),
+) -> dict:
+    """Devuelve en cuanto hay cambios; si no, late cada `wait` segundos.
+
+    `as` es el cursor de avisos: el cliente recibe solo los posteriores, así que
+    ni se pierde un aviso que llegue mientras está desconectado ni se repite el
+    mismo en cada respuesta.
+    """
     started = time.monotonic()
     first = True
     while True:
         if await request.is_disconnected():
             break
-        # el primer intento ya devuelve el estado actual (sin esperar)
-        ready = await _pending(since) if not first else {
-            "cursor": HUB.event_seq,
-            "layers": [],
-            "alerts": [],
-            "versions": {k: str(v) for k, v in HUB.versions.items()},
-            "server_time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        }
-        if ready is not None and (first or ready["layers"] or HUB.event_seq > since):
+        # el primer intento devuelve el estado actual (avisos incluidos) sin esperar
+        ready = await _pending(since, alert_since) if not first else _snapshot(since, alert_since, [])
+        if ready is not None and (
+            first
+            or ready["layers"]
+            or HUB.event_seq > since
+            or HUB.alert_seq > alert_since
+        ):
             return ready
         if time.monotonic() - started >= wait:
-            return {
-                "cursor": HUB.event_seq,
-                "layers": [],
-                "alerts": [],
-                "versions": {k: str(v) for k, v in HUB.versions.items()},
-                "server_time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            }
+            return _snapshot(since, alert_since, [])
         first = False
         await asyncio.sleep(0.8)
-    return {"cursor": HUB.event_seq, "layers": [], "alerts": [], "heartbeat": True}
+    return {**_snapshot(since, alert_since, []), "heartbeat": True}

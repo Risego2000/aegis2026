@@ -55,6 +55,9 @@ class LiveHub:
         self.event_seq: int = 0
         self.new_events: list[dict[str, Any]] = []
         self.alerts: list[dict[str, Any]] = []
+        # secuencia monótona de avisos: el cliente pide «dame los posteriores a N»
+        # y así no se pierde ninguno ni se repite al reconectar
+        self.alert_seq: int = 0
         self.started = time.time()
         self.listeners = 0
 
@@ -72,9 +75,19 @@ class LiveHub:
             self.new_events = self.new_events[-200:]
 
     def push_alert(self, alert: dict[str, Any]) -> None:
+        self.alert_seq += 1
         self.alerts.append(alert)
         if len(self.alerts) > 100:
             self.alerts = self.alerts[-100:]
+
+    def alerts_since(self, cursor: int, limit: int = 40) -> list[dict[str, Any]]:
+        """Avisos con secuencia mayor que `cursor` (los más recientes si no hay)."""
+        first_seq = self.alert_seq - len(self.alerts)
+        fresh = [
+            alert for index, alert in enumerate(self.alerts)
+            if first_seq + index + 1 > cursor
+        ]
+        return fresh[-limit:]
 
     # ------------------------------------------------------------------- lectura
     def changes(self) -> list[str]:

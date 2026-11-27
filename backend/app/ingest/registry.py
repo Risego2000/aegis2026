@@ -21,7 +21,7 @@ from ..live import AIRCRAFT, AIR, VESSELS, LiveLayer
 from ..livehub import HUB
 from ..models import Event, EventRecord
 from ..storage.base import Store
-from . import adsb, air, ais, cameras, dgt, emsc, eonet, firms, gdacs, gdelt, gtfs, nws, satellites, trains, usgs
+from . import adsb, air, ais, cameras, dgt, emsc, eonet, firms, gdacs, gdelt, gtfs, ioda, nws, satellites, trains, usgs
 from .client import Fetcher
 
 log = logging.getLogger("aegis.registry")
@@ -78,6 +78,8 @@ class Registry:
         self.ingestors: dict[str, Ingestor] = {}
         self._tasks: list[asyncio.Task] = []
         self._ais_queue: asyncio.Queue | None = None
+        # almacén de analista (watchlists/casos/posiciones); lo inyecta main.py
+        self.extras = None
         self.started_at = time.time()
 
     # ------------------------------------------------------------------ #
@@ -134,6 +136,10 @@ class Registry:
             add(Ingestor("nws", settings.nws_interval, "events", self._run_nws,
                          meta={"source": "NOAA / NWS", "url": "api.weather.gov",
                                "description": "Avisos meteorológicos severos activos (EE. UU.)"}))
+        if settings.enable_ioda:
+            add(Ingestor("ioda", settings.ioda_interval, "events", self._run_ioda,
+                         meta={"source": "IODA · Georgia Tech", "url": "ioda.inetintel.cc.gatech.edu",
+                               "description": "Cortes de internet medidos (BGP + sondas + telescopio), sin clave"}))
         if settings.enable_cameras:
             add(Ingestor("cameras", settings.cameras_interval, "internal", self._run_cameras,
                          meta={"source": "Cámaras públicas", "url": "tfl.gov.uk · dot.ca.gov · nyctmc.org · digitraffic.fi",
@@ -196,6 +202,9 @@ class Registry:
             return []
         return await ais.fetch_digitraffic(self.fetcher)
 
+    async def _run_ioda(self) -> list[EventRecord]:
+        return await ioda.fetch(self.fetcher)
+
     async def _run_cameras(self) -> int:
         return await cameras.refresh(self.fetcher)
 
@@ -250,6 +259,7 @@ class Registry:
                     message = f"{upsert.inserted} nuevos · {upsert.merged} fusionados"
                     await self.engine.evaluate_events([self._shim(r) for r in records
                                                        if r.category in ("earthquake", "disaster", "wildfire")])
+                    self._watch(records)
                 elif ing.kind == "positions":
                     actors = result or []
                     items = len(actors)
@@ -278,6 +288,17 @@ class Registry:
             await self.store.record_run(ing.name, ok, items, message, duration)
 
             await asyncio.sleep(ing.interval * delay_boost + random.uniform(0, 1.5))
+
+    def _watch(self, records: list[EventRecord]) -> None:
+        """Contrasta los sucesos recién ingeridos con las reglas del analista."""
+        if not records or self.extras is None:
+            return
+        try:
+            from ..extras import watch as watch_mod
+
+            watch_mod.evaluate(records, self.extras, HUB)
+        except Exception as exc:  # noqa: BLE001 - una regla rota no tumba la ingesta
+            log.warning("watchlists: %s", exc)
 
     def _shim(self, rec: EventRecord) -> Event:
         """Lightweight Event view so the fence engine can react immediately."""
@@ -365,6 +386,7 @@ class Registry:
                     HUB.push_events(fresh)
                 except Exception:  # noqa: BLE001 - el canal en vivo nunca rompe la ingesta
                     pass
+                self._watch(result or [])
             elif ing.kind == "positions":
                 if ing.layer:
                     ing.layer.upsert_many(result or [])

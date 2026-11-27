@@ -1,0 +1,33 @@
+# AEGIS en local con un solo comando:  docker compose up --build
+#
+# El mapa queda en http://localhost:8000 y la API en /api. La base persiste en
+# el volumen `aegis-data`, así que reiniciar no borra el archivo de sucesos.
+services:
+  aegis:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/risego2000/aegis:local
+    ports:
+      - "8000:8000"
+    environment:
+      TZ: Europe/Madrid
+      SQLITE_PATH: /data/aegis.sqlite
+      RETENTION_DAYS: "7"
+      # Opcionales: sin ellas la app funciona igual (solo se apagan capas)
+      # AISSTREAM_API_KEY: ""
+      # FIRMS_MAP_KEY: ""
+      # OPENAI_API_KEY: ""     # solo si quieres el briefing con IA
+      # TLP: "CLEAR"
+    volumes:
+      - aegis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=4).status==200 else 1)"]
+      interval: 30s
+      timeout: 6s
+      retries: 3
+      start_period: 45s
+
+volumes:
+  aegis-data:

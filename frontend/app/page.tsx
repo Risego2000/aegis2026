@@ -10,7 +10,7 @@ import type { PlaceData } from "@/components/PlacePanel";
 import SidePanel, { type LayerCounts } from "@/components/SidePanel";
 import Timeline from "@/components/Timeline";
 import TopBar from "@/components/TopBar";
-import { api, wsUrl } from "@/lib/api";
+import { api, apiUrl, assetUrl, wsUrl } from "@/lib/api";
 import { CATEGORY_META, timeAgo } from "@/lib/format";
 import type {
   ActorDetail, ActorKind, ActorTrack, Alert, AppConfig, Briefing, EventFeature, FeatureCollection,
@@ -27,8 +27,8 @@ const MapView = dynamic(() => import("@/components/MapView"), {
 });
 
 const ALL_CATS = Object.keys(CATEGORY_META);
-/** Ventana del almacén: coincide con RETENTION_DAYS del backend (14 días). */
-const RETENTION_H = 336;
+/** Ventana del archivo: coincide con RETENTION_DAYS por defecto (7 días). */
+const RETENTION_H = 168;
 
 /** Mensaje de error legible: sin HTML ni trazas kilométricas. */
 function friendlyError(err: any): string {
@@ -182,7 +182,7 @@ export default function Page() {
     let alive = true;
     const tick = async () => {
       try {
-        const res = await fetch("/api/layers", { cache: "no-store" });
+        const res = await fetch(apiUrl("/api/layers"), { cache: "no-store" });
         if (!res.ok) return;
         const data = (await res.json()) as LayerCounts;
         if (alive) setLayerCounts(data);
@@ -253,7 +253,7 @@ export default function Page() {
         const reg = await navigator.serviceWorker?.ready;
         reg?.showNotification("AEGIS · avisos activados", {
           body: "Te avisaré de lo que entre en tus zonas vigiladas aunque no estés mirando.",
-          icon: "/icon.svg",
+          icon: assetUrl("/icon.svg"),
           tag: "aegis-bienvenida",
         });
       } catch { /* la notificación es opcional */ }
@@ -263,7 +263,7 @@ export default function Page() {
   /* service worker: armazón sin red + notificaciones */
   useEffect(() => {
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
-    navigator.serviceWorker.register("/sw.js").catch(() => {});
+    navigator.serviceWorker.register(assetUrl("/sw.js")).catch(() => {});
     if ("Notification" in window && Notification.permission === "granted") setNotifyOn(true);
   }, []);
 
@@ -336,8 +336,10 @@ export default function Page() {
     let disposed = false;
     let timer: any = null;
     let cursor = 0;
+    let alertCursor = 0;
     let failures = 0;
-    let lastAlert = "";
+    // los avisos de patrón pueden repetirse entre reconexiones: huella por aviso
+    const seenAlerts = new Set<string>();
 
     const schedule = (ms: number) => {
       clearTimeout(timer);
@@ -349,7 +351,7 @@ export default function Page() {
       if (typeof document !== "undefined" && document.hidden) { schedule(30_000); return; }
       const started = Date.now();
       try {
-        const res = await fetch(`/api/poll?since=${cursor}&wait=18`, { cache: "no-store" });
+        const res = await fetch(apiUrl(`/api/poll?since=${cursor}&as=${alertCursor}&wait=18`), { cache: "no-store" });
         if (!res.ok) throw new Error(`poll ${res.status}`);
         const data = await res.json();
         failures = 0;
@@ -366,17 +368,17 @@ export default function Page() {
             reloaders.current.layers?.();
           }
         }
-        // el servidor puede mandar el mismo aviso en varias respuestas: se evita repetirlo
+        // solo los avisos posteriores al cursor, sin repetir huellas ya vistas
         const alerts: any[] = data.alerts ?? [];
-        if (alerts.length) {
-          const newest = alerts[alerts.length - 1];
-          const stamp = `${newest?.ts ?? ""}-${newest?.title ?? ""}`;
-          if (stamp !== lastAlert) {
-            lastAlert = stamp;
-            pushAlert(newest as Alert);
-          }
+        for (const alert of alerts) {
+          const stamp = `${alert?.ts ?? ""}-${alert?.title ?? ""}`;
+          if (!stamp || seenAlerts.has(stamp)) continue;
+          seenAlerts.add(stamp);
+          if (seenAlerts.size > 400) seenAlerts.clear();
+          pushAlert(alert as Alert);
         }
         cursor = freshCursor;
+        alertCursor = Number(data.alert_cursor ?? alertCursor);
         // si hubo cambios, se vuelve enseguida; si fue un latido, se espera 2 s
         const elapsed = Date.now() - started;
         schedule(layers.length ? 400 : Math.max(1200, elapsed < 3000 ? 2000 : 400));
@@ -547,7 +549,7 @@ export default function Page() {
             .then((reg) => reg.showNotification(`AEGIS · ${alert.title}`, {
               body: (alert as any).message || (alert as any).fence_name || "alerta de zona vigilada",
               tag: `${alert.fence_id ?? "aegis"}-${alert.event_type ?? "aviso"}`,
-              icon: "/icon.svg",
+              icon: assetUrl("/icon.svg"),
             }))
             .catch(() => {});
         } catch { /* sin service worker no hay notificación, nada más */ }
@@ -1276,8 +1278,11 @@ export default function Page() {
           <div className="fatal-card">
             <div className="fatal-title">No se puede alcanzar el backend</div>
             <div className="fatal-body">
-              El cliente está cargado, pero <span className="mono">{typeof location !== "undefined" ? location.origin : ""}/api/health</span>{" "}
+              El cliente está cargado, pero <span className="mono">{apiUrl("/api/health")}</span>{" "}
               no responde. El motor OSINT vive en un proceso aparte y en este momento no está escuchando.
+              Si el backend ya está en otra URL, abre esta página con{" "}
+              <span className="mono">?api=https://tu-backend</span> o deja esa URL en{" "}
+              <span className="mono">runtime-config.json</span>.
               <div className="fatal-err mono">{apiDown}</div>
             </div>
             <div className="btn-row">

@@ -8,6 +8,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { eventFeatureToItem, type BreakdownItem } from "@/components/Breakdown";
 import type { ActorKind, EventFeature, FeatureCollection, LiveCollection } from "@/lib/types";
 import { categoryMeta } from "@/lib/format";
+import { apiUrl } from "@/lib/api";
 import { categoryIconData } from "@/lib/mapIcons";
 
 type Props = {
@@ -248,6 +249,15 @@ function graticule(): GeoJSON.FeatureCollection {
   return { type: "FeatureCollection", features };
 }
 
+/** Estilo base con las capas geográficas servidas por la API configurada. */
+const withApi = (style: any) => {
+  const sources: any = { ...style.sources };
+  for (const id of ["land", "countries", "places"]) {
+    sources[id] = { ...sources[id], data: apiUrl(`/api/basemap/${id}`) };
+  }
+  return { ...style, sources };
+};
+
 const BASE_STYLE: any = {
   version: 8,
   projection: { type: "globe" },
@@ -368,6 +378,23 @@ export default function MapView(props: Props) {
   const vesselIndex = useRef<any>(null);
   const orbitPopup = useRef<Popup | null>(null);
 
+  /* Si la configuración de la API se resuelve después de crear el estilo
+     (`runtime-config.json` o `?api=`), se recargan las capas base con la URL
+     definitiva. En mismo origen no hay nada que hacer. */
+  useEffect(() => {
+    const apply = () => {
+      const map = mapRef.current;
+      if (!map || apiUrl("/api/basemap/land") === "/api/basemap/land") return;
+      for (const id of ["land", "countries", "places"]) {
+        const src = map.getSource(id) as maplibregl.GeoJSONSource | undefined;
+        src?.setData(apiUrl(`/api/basemap/${id}`));
+      }
+    };
+    apply();
+    window.addEventListener("aegis:api-ready", apply);
+    return () => window.removeEventListener("aegis:api-ready", apply);
+  }, []);
+
   /* ------------------------------------------------------------- init map */
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -375,7 +402,7 @@ export default function MapView(props: Props) {
     try {
       map = new maplibregl.Map({
       container: containerRef.current,
-      style: BASE_STYLE,
+      style: withApi(BASE_STYLE),
       center: [8, 26],
       zoom: 1.55,
       minZoom: 0.6,
@@ -2062,7 +2089,7 @@ export default function MapView(props: Props) {
     // derrotas marítimas: conjunto pequeño, se pide una sola vez
     const src = map.getSource("sealanes") as maplibregl.GeoJSONSource | undefined;
     if (src) {
-      fetch("/api/basemap/sealanes").then((r) => (r.ok ? r.json() : null)).then((d) => d && src.setData(d)).catch(() => {});
+      fetch(apiUrl("/api/basemap/sealanes")).then((r) => (r.ok ? r.json() : null)).then((d) => d && src.setData(d)).catch(() => {});
     }
     cargar();
     map.on("moveend", cargar);

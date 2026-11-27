@@ -87,6 +87,7 @@ class Settings:
     enable_eonet: bool = field(default_factory=lambda: _bool("ENABLE_EONET", True))
     enable_emsc: bool = field(default_factory=lambda: _bool("ENABLE_EMSC", True))
     enable_nws: bool = field(default_factory=lambda: _bool("ENABLE_NWS", True))
+    enable_ioda: bool = field(default_factory=lambda: _bool("ENABLE_IODA", True))
     enable_adsbfi: bool = field(default_factory=lambda: _bool("ENABLE_ADSB_FI", True))
 
     usgs_interval: int = field(default_factory=lambda: int(_num("USGS_INTERVAL", 120)))
@@ -101,6 +102,7 @@ class Settings:
     eonet_interval: int = field(default_factory=lambda: int(_num("EONET_INTERVAL", 600)))
     emsc_interval: int = field(default_factory=lambda: int(_num("EMSC_INTERVAL", 180)))
     nws_interval: int = field(default_factory=lambda: int(_num("NWS_INTERVAL", 300)))
+    ioda_interval: int = field(default_factory=lambda: int(_num("IODA_INTERVAL", 600)))
 
     # USGS magnitude floor for the live feed (4.5_day / 2.5_day / all_day)
     usgs_feed: str = field(default_factory=lambda: _env("USGS_FEED", "4.5_day"))
@@ -154,6 +156,16 @@ class Settings:
     ))
     geo_dir: str = field(default_factory=lambda: _env("GEO_DIR", str(ROOT / "data" / "geo")))
     cors_origins: str = field(default_factory=lambda: _env("CORS_ORIGINS", "*"))
+
+    # --- tradecraft / capa de analista ------------------------------------
+    # TLP por defecto de los productos y exportaciones (CLEAR/GREEN/AMBER/RED).
+    tlp: str = field(default_factory=lambda: _env("TLP", "CLEAR"))
+    # webhook común para las reglas que no definan el suyo (Slack/Telegram/n8n)
+    watch_webhook: str = field(default_factory=lambda: _env("AEGIS_WEBHOOK_URL"))
+    # reproducción histórica: muestreo de posiciones y retención (coste en disco)
+    playback_enabled: bool = field(default_factory=lambda: _bool("PLAYBACK_ENABLED", True))
+    playback_interval: int = field(default_factory=lambda: int(_num("PLAYBACK_INTERVAL", 300)))
+    playback_hours: int = field(default_factory=lambda: int(_num("PLAYBACK_HOURS", 6)))
 
     # Fence/rule thresholds ------------------------------------------------
     emergency_squawks: tuple[str, ...] = ("7500", "7600", "7700")

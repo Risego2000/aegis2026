@@ -1,17 +1,25 @@
 # AEGIS — atajos de desarrollo
-.PHONY: install geo backend frontend build dev smoke clean
+#
+# El backend usa un entorno virtual propio (.venv): en sistemas con Python
+# "gestionado por el sistema" (PEP 668) `pip install` global falla, y el README
+# ya no lo pide.
+VENV ?= .venv
+PY   ?= $(VENV)/bin/python
 
-install:            ## dependencias de backend y frontend
-	pip install -r backend/requirements.txt
-	cd frontend && npm install
+.PHONY: install geo backend frontend build dev smoke check clean
+
+install:            ## dependencias de backend (en .venv) y frontend
+	python3 -m venv $(VENV)
+	$(VENV)/bin/pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+	cd frontend && npm ci
 
 geo:                ## red viaria y ferrocarril (si no vienen en el repo)
-	python3 scripts/fetch_geo.py
+	$(PY) scripts/fetch_geo.py
 
 backend:            ## API + mapa en http://localhost:8000
-	cd backend && python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+	cd backend && ../$(PY) -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 
-frontend:           ## modo desarrollo del frontend en http://localhost:3000
+frontend:           ## modo desarrollo del frontend en http://localhost:3001
 	cd frontend && npm run dev
 
 build:              ## export estático → frontend/site (lo sirve el backend)
@@ -20,8 +28,13 @@ build:              ## export estático → frontend/site (lo sirve el backend)
 dev:                ## backend + frontend de desarrollo a la vez
 	bash scripts/dev.sh
 
-smoke:              ## 29 comprobaciones contra un servidor en marcha
-	python3 scripts/smoke.py
+smoke:              ## comprobaciones contra un servidor en marcha
+	$(PY) scripts/smoke.py
+
+check:              ## lo mismo que el CI: tipos, lint y tests (sin red)
+	cd frontend && ./node_modules/.bin/tsc --noEmit
+	cd frontend && npm run lint
+	$(PY) -m pytest backend/tests -q
 
 clean:
 	rm -rf frontend/.next frontend/out frontend/site

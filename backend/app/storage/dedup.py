@@ -32,6 +32,7 @@ MERGE_RADIUS_M: dict[str, float] = {
     "diplomacy": 80_000,
     "economy": 80_000,
     "news": 100_000,
+    "network": 400_000,   # un apagón afecta a un país entero
 }
 
 MERGE_WINDOW_H: dict[str, float] = {
@@ -44,6 +45,7 @@ MERGE_WINDOW_H: dict[str, float] = {
     "diplomacy": 24,
     "economy": 24,
     "news": 12,
+    "network": 24,
 }
 
 # Categories that may collapse into each other (cross-source fusion).
@@ -57,6 +59,7 @@ COMPATIBLE = {
     "diplomacy": {"diplomacy", "news"},
     "economy": {"economy", "news"},
     "news": {"news", "conflict", "military", "protest", "diplomacy", "economy"},
+    "network": {"network"},
 }
 
 TEXT_MERGE_THRESHOLD = 0.42
@@ -69,6 +72,7 @@ SOURCE_PRIORITY = {
     "ais": 70,
     "adsb": 70,
     "gdelt": 55,
+    "ioda": 90,
 }
 
 
