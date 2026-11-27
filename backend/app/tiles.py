@@ -1,19 +1,28 @@
-"""Fondo de mapa detallado (calles y satélite) sin claves.
+"""Fondos de mapa de AEGIS: una base por pregunta, todas sin clave.
 
-El mapa de AEGIS nace con una base vectorial propia (Natural Earth) que da
-contexto global, pero para situar un elemento con precisión hace falta calle a
-calle. Este módulo sirve teselas ráster de tres proveedores públicos y sin
-clave, **desde el propio backend**:
+El mapa sirve para vigilar cinco cosas (sucesos, vuelos, buques, trenes y
+cámaras), y cada una se lee mejor sobre un fondo distinto. En vez de acumular
+variantes del mismo mapa, este catálogo ofrece solo las bases que aportan algo:
 
-  · calles   → OpenStreetMap estándar (calles, nombres, sentidos)
-  · oscuro   → Esri Dark Gray Canvas (callejero oscuro con etiquetas)
-  · claro    → Esri Light Gray Canvas
-  · satelite → Esri World Imagery (orto­foto)
+  · detalle     → Esri Dark Gray Canvas: callejero oscuro para trabajo urbano
+  · detalle_ref → etiquetas de ese callejero (capa transparente)
+  · imagen      → Esri World Imagery: ortofoto real
+  · imagen_ref  → límites y lugares para la ortofoto (capa transparente)
+  · relieve     → Esri World Hillshade: sombreado del terreno
+  · maritimo    → Esri World Ocean Base: batimetría y costa
+  · calles      → Esri World Street Map: callejero claro con nombres
+  · claro       → Esri Light Gray Canvas: base mínima para informes
+  · claro_ref   → etiquetas claras (capa transparente)
+  · transporte  → Esri World Transportation: carreteras y ferrocarril
+
+El fondo «operativo» lo dibuja el propio cliente con Natural Earth y las
+etiquetas oscuras de este catálogo, así que no necesita teselas propias.
 
 Servirlas en proxy tiene tres ventajas: el cliente no habla con terceros (nada
 de CORS ni de fugas de referrer), el navegador cachea una sola vez y nosotros
-cacheamos en disco para no abusar de la cortesía de los proveedores. El
-proveedor se elige por configuración y se respeta su política de uso.
+cacheamos en disco para no abusar de la cortesía del proveedor. Los `maxzoom`
+son los que devuelven contenido real (por encima, el proveedor repite una
+tesela vacía): MapLibre reescala la última buena.
 """
 from __future__ import annotations
 
@@ -29,19 +38,9 @@ log = logging.getLogger("aegis.tiles")
 
 # Orden de subdominios de CARTO/OSM: reparte la carga entre sus CDN.
 STYLES: dict[str, dict[str, Any]] = {
-    "calles": {
-        "label": "Calles",
-        "url": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-        "maxzoom": 19,
-        "ext": "png",
-        "attribution": "© OpenStreetMap contributors",
-        "headers": {"Referer": "https://aegis.local/"},
-    },
-    # CARTO pasó a exigir clave (marca de agua «API KEY REQUIRED» en la tesela),
-    # así que el callejero oscuro/claro se sirve con los mapas grises de Esri,
-    # que siguen siendo públicos y sin registro.
-    "oscuro": {
-        "label": "Oscuro",
+    # --- callejero oscuro: el urbano que no deslumbra ---------------------
+    "detalle": {
+        "label": "Detalle urbano (oscuro)",
         "url": (
             "https://server.arcgisonline.com/ArcGIS/rest/services/"
             "Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
@@ -50,6 +49,73 @@ STYLES: dict[str, dict[str, Any]] = {
         "ext": "jpg",
         "attribution": "Esri · HERE · OpenStreetMap",
     },
+    # CARTO pasó a exigir clave (marca de agua «API KEY REQUIRED»), por eso los
+    # grises se sirven con Esri, que sigue siendo público y sin registro.
+    "detalle_ref": {
+        "label": "Etiquetas (oscuras)",
+        "url": (
+            "https://server.arcgisonline.com/ArcGIS/rest/services/"
+            "Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}"
+        ),
+        "maxzoom": 14,       # z15+ devuelve teselas vacías
+        "ext": "png",
+        "attribution": "Esri · HERE",
+    },
+    # --- ortofoto con su capa de referencia ------------------------------
+    "imagen": {
+        "label": "Imagen satelital",
+        "url": (
+            "https://server.arcgisonline.com/ArcGIS/rest/services/"
+            "World_Imagery/MapServer/tile/{z}/{y}/{x}"
+        ),
+        "maxzoom": 19,
+        "ext": "jpg",
+        "attribution": "Esri · Maxar · Earthstar Geographics",
+    },
+    "imagen_ref": {
+        "label": "Límites y lugares",
+        "url": (
+            "https://server.arcgisonline.com/ArcGIS/rest/services/"
+            "Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
+        ),
+        "maxzoom": 15,       # z16+ devuelve teselas vacías
+        "ext": "png",
+        "attribution": "Esri · HERE",
+    },
+    # --- terreno: lo que explica sismos, volcanes, incendios e inundaciones
+    "relieve": {
+        "label": "Relieve",
+        "url": (
+            "https://server.arcgisonline.com/ArcGIS/rest/services/"
+            "Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}"
+        ),
+        "maxzoom": 16,
+        "ext": "jpg",
+        "attribution": "Esri · GEBCO · USGS",
+    },
+    # --- mar: batimetría para buques y derrotas -------------------------
+    "maritimo": {
+        "label": "Marítimo",
+        "url": (
+            "https://server.arcgisonline.com/ArcGIS/rest/services/"
+            "Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}"
+        ),
+        "maxzoom": 10,       # z11+ repite una tesela plana
+        "ext": "jpg",
+        "attribution": "Esri · GEBCO",
+    },
+    # --- callejero claro: nombres, sentidos y detalle urbano -------------
+    "calles": {
+        "label": "Calles",
+        "url": (
+            "https://server.arcgisonline.com/ArcGIS/rest/services/"
+            "World_Street_Map/MapServer/tile/{z}/{y}/{x}"
+        ),
+        "maxzoom": 19,
+        "ext": "jpg",
+        "attribution": "Esri · HERE · OpenStreetMap",
+    },
+    # --- base mínima para informes y proyecciones -----------------------
     "claro": {
         "label": "Claro",
         "url": (
@@ -60,53 +126,22 @@ STYLES: dict[str, dict[str, Any]] = {
         "ext": "jpg",
         "attribution": "Esri · HERE · OpenStreetMap",
     },
-    "calles_esri": {
-        "label": "Calles (Esri)",
-        "url": (
-            "https://server.arcgisonline.com/ArcGIS/rest/services/"
-            "World_Street_Map/MapServer/tile/{z}/{y}/{x}"
-        ),
-        "maxzoom": 19,
-        "ext": "jpg",
-        "attribution": "Esri · HERE · OpenStreetMap",
-    },
-    # capas transparentes de etiquetas que acompañan a los mapas grises
-    "oscuro_ref": {
-        "label": "Etiquetas (oscuro)",
-        "url": (
-            "https://server.arcgisonline.com/ArcGIS/rest/services/"
-            "Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}"
-        ),
-        "maxzoom": 16,
-        "ext": "png",
-        "attribution": "Esri · HERE",
-    },
     "claro_ref": {
-        "label": "Etiquetas (claro)",
+        "label": "Etiquetas (claras)",
         "url": (
             "https://server.arcgisonline.com/ArcGIS/rest/services/"
             "Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}"
         ),
-        "maxzoom": 16,
+        "maxzoom": 14,       # z15+ devuelve teselas vacías
         "ext": "png",
         "attribution": "Esri · HERE",
     },
-    "satelite": {
-        "label": "Satélite",
-        "url": (
-            "https://server.arcgisonline.com/ArcGIS/rest/services/"
-            "World_Imagery/MapServer/tile/{z}/{y}/{x}"
-        ),
-        "maxzoom": 19,
-        "ext": "jpg",
-        "attribution": "Esri · Maxar · Earthstar Geographics",
-    },
     # --- red de transporte que usan los medios que vigilamos -------------
     # Esri World Transportation: carreteras (autovías y comarcales) y
-    # ferrocarril en la misma capa transparente. Se pinta ENCIMA del fondo
-    # elegido, así que está disponible con todos los estilos.
+    # ferrocarril en la misma capa transparente. Se pinta ENCIMA de la
+    # ortofoto, que no trae ninguna de las dos.
     "transporte": {
-        "label": "Red de carreteras y ferrocarril",
+        "label": "Carreteras y ferrocarril",
         "url": (
             "https://server.arcgisonline.com/ArcGIS/rest/services/"
             "Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}"
@@ -115,20 +150,8 @@ STYLES: dict[str, dict[str, Any]] = {
         "ext": "png",
         "attribution": "Esri · HERE · OpenStreetMap",
     },
-    # Esri Ocean Reference: derrotas marítimas con escala y batimetría
-    # (transparente; pensada para superponerse a un fondo claro).
-    "oceanoref": {
-        "label": "Derrotas marítimas (Esri)",
-        "url": (
-            "https://server.arcgisonline.com/ArcGIS/rest/services/"
-            "Ocean/World_Ocean_Reference/MapServer/tile/{z}/{y}/{x}"
-        ),
-        "maxzoom": 13,
-        "ext": "png",
-        "attribution": "Esri · GEBCO",
-    },
 }
-DEFAULT_STYLE = "calles"
+DEFAULT_STYLE = "detalle"
 
 UA = "AegisOSINT/1.0 (+https://github.com/; visor OSINT de fuentes abiertas)"
 

@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import type { AppConfig, Health } from "@/lib/types";
 import { fmtNumber, utcClock } from "@/lib/format";
+import { Icon } from "@/components/Icon";
+import { locateMe } from "@/lib/geo";
 
 export type KpiKey = "view" | "stored" | "aircraft" | "vessels" | "satellites" | "cameras" | "air" | "trains";
 
@@ -65,14 +67,14 @@ export default function TopBar({
     { key: "vessels" as KpiKey, label: "Buques", value: health?.live?.vessels?.count ?? 0, hint: "Buques recibidos por AIS en este momento. Pulsa para ver la lista." },
     { key: "satellites" as KpiKey, label: "Satélites", value: health?.live?.satellites?.count ?? 0, hint: "Satélites propagados con elementos orbitales. Pulsa para ver la lista." },
     { key: "cameras" as KpiKey, label: "Cámaras", value: health?.live?.cameras?.count ?? 0, hint: "Cámaras públicas indexadas y su cobertura. Pulsa para ver la lista." },
-    { key: "trains" as KpiKey, label: "Trenes", value: (health as any)?.live?.trains?.count ?? 0, hint: "Trenes de Renfe en circulación ahora mismo (GTFS-Realtime). Pulsa para ver la lista." },
+    { key: "trains" as KpiKey, label: "Trenes", value: (health as any)?.live?.trains?.count ?? 0, hint: "Trenes de Renfe, FGC y Amtrak en circulación ahora mismo (GTFS-Realtime). Pulsa para ver la lista." },
     { key: "air" as KpiKey, label: "Aire", secondary: true, value: health?.live?.air?.count ?? 0, hint: "Sensores de calidad del aire. Pulsa para ver la lista." },
   ]), [viewCount, health]);
 
   return (
     <header className="topbar">
       <button className="brand" onClick={onOpenLeft} title="Abrir capas, filtros y fuentes">
-        <div className="brand-mark" aria-hidden="true">◈</div>
+        <div className="brand-mark" aria-hidden="true"><Icon name="aegis" size={18} /></div>
         <div style={{ textAlign: "left" }}>
           <div className="brand-name">AEGIS</div>
           <div className="brand-sub">Centro de inteligencia abierta</div>
@@ -109,30 +111,20 @@ export default function TopBar({
           className="search-me"
           title="Usar mi ubicación: muestra los elementos y sucesos más cercanos a donde estoy"
           aria-label="Usar mi ubicación"
-          onClick={() => {
-            if (!navigator.geolocation) return;
-            navigator.geolocation.getCurrentPosition(
-              (pos) => {
-                const { latitude, longitude } = pos.coords;
-                window.dispatchEvent(new CustomEvent("aegis:me", { detail: { lat: latitude, lon: longitude } }));
-              },
-              () => {},
-              { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 },
-            );
-          }}
+          onClick={() => locateMe()}
         >
-          ◎
+          <Icon name="locate" size={16} />
         </button>
-        <span className="faint" aria-hidden="true" style={{ fontSize: 13 }}>⌕</span>
+        <span className="faint" aria-hidden="true"><Icon name="search" size={16} /></span>
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Buscar evento, país o fuente…"
+          placeholder="Buscar evento, país…"
           aria-label="Buscar eventos"
           spellCheck={false}
         />
         {query && (
-          <button className="faint tiny" onClick={() => setQuery("")} title="Borrar la búsqueda" aria-label="Borrar búsqueda">✕</button>
+          <button className="faint tiny" onClick={() => setQuery("")} title="Borrar la búsqueda" aria-label="Borrar búsqueda"><Icon name="close" size={14} /></button>
         )}
       </div>
 
@@ -158,7 +150,7 @@ export default function TopBar({
           onClick={onShare}
           aria-label="Compartir vista"
         >
-          {shareCopied ? "✓" : "⤴"}
+          <Icon name={shareCopied ? "check" : "share"} size={16} />
         </button>
       )}
       {onToggleNotify && (
@@ -168,12 +160,12 @@ export default function TopBar({
           onClick={onToggleNotify}
           aria-label="Avisos del sistema"
         >
-          {notifyOn ? "🔔" : "🔕"}
+          <Icon name={notifyOn ? "bell" : "bellOff"} size={16} />
         </button>
       )}
-      <button className="icon-btn mobile-only" title="Capas y filtros" onClick={onOpenLeft} aria-label="Capas y filtros">▤</button>
-      <button className="icon-btn mobile-only" title="Panel de análisis" onClick={onOpenRight} aria-label="Panel de análisis">☰</button>
-      <button className="icon-btn" title="Cómo funciona la aplicación (guía rápida)" onClick={onHelp} aria-label="Ayuda">?</button>
+      <button className="icon-btn mobile-only" title="Capas y filtros" onClick={onOpenLeft} aria-label="Capas y filtros"><Icon name="layers" size={17} /></button>
+      <button className="icon-btn mobile-only" title="Panel de análisis" onClick={onOpenRight} aria-label="Panel de análisis"><Icon name="panel" size={17} /></button>
+      <button className="icon-btn" title="Cómo funciona la aplicación (guía rápida)" onClick={onHelp} aria-label="Ayuda"><Icon name="help" size={17} /></button>
       </div>
     </header>
   );

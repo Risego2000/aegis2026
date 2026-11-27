@@ -150,8 +150,9 @@ class Registry:
                                "description": "Incidencias de tráfico en tiempo real: accidentes, obras, cortes y restricciones"}))
         if settings.enable_trains:
             add(Ingestor("trains", settings.trains_interval, "positions", self._run_trains,
-                         meta={"source": "Renfe GTFS-RT + Amtrak", "url": "gtfsrt.renfe.com · amtraker.com",
-                               "description": "Trenes en vivo: Renfe (Cercanías, AVE, Avlo, Alvia, MD) y Amtrak"}))
+                         meta={"source": "Renfe + FGC + Amtrak",
+                               "url": "gtfsrt.renfe.com · dadesobertes.fgc.cat · amtraker.com",
+                               "description": "Trenes en vivo: Renfe (Cercanías, AVE, Avlo, Alvia, MD), FGC y Amtrak"}))
         if settings.enable_trains:
             add(Ingestor("renfe-avisos", 600, "events", self._run_renfe_alerts,
                          meta={"source": "Renfe", "url": "gtfsrt.renfe.com/alerts.json",

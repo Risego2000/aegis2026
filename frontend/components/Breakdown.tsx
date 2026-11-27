@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { api } from "@/lib/api";
 import { categoryMeta, fmtNumber, timeAgo } from "@/lib/format";
+import { Icon } from "@/components/Icon";
 import type { LiveCollection } from "@/lib/types";
 
 export type BreakdownItem = {
@@ -217,7 +218,7 @@ export default function Breakdown({ spec, onClose, onPick }: Props) {
               </button>
             )}
             <button className="panel-close" style={{ display: "grid" }} onClick={onClose} aria-label="Cerrar desglose">
-              ✕
+              <Icon name="close" size={16} />
             </button>
           </div>
         </header>

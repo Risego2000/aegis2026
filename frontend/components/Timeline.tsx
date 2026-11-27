@@ -58,9 +58,10 @@ export default function Timeline({ events, hours, setHours, onSelect, alertsCoun
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 4, flex: "0 0 auto" }}>
+      <div className="timeline-period" role="group" aria-label="Periodo de los sucesos">
+        <span className="timeline-period-label">Sucesos</span>
         {[15 / 60, 1, 6, 24, 72, 168].map((h) => (
-          <button key={h} className={`chip ${hours === h ? "active" : ""}`} onClick={() => setHours(h)}>
+          <button key={h} className={`chip ${hours === h ? "active" : ""}`} onClick={() => setHours(h)} aria-pressed={hours === h}>
             {h < 1 ? "AHORA" : h < 24 ? `${h}H` : `${h / 24}D`}
           </button>
         ))}
@@ -72,13 +73,14 @@ export default function Timeline({ events, hours, setHours, onSelect, alertsCoun
           {latest.map((f, i) => (
             <span key={f.properties.id}>
               {i > 0 && <span className="faint"> · </span>}
-              <span
-                style={{ color: categoryMeta(f.properties.category).color, cursor: "pointer" }}
+              <button
+                className="ticker-event"
+                style={{ color: categoryMeta(f.properties.category).color }}
                 onClick={() => onSelect(f)}
                 title={f.properties.title}
               >
                 {f.properties.title.slice(0, 74)} ({timeAgo(f.properties.event_time)})
-              </span>
+              </button>
             </span>
           ))}
           {latest.length === 0 && <span className="faint">sin eventos en la ventana del mapa</span>}

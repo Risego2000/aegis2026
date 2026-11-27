@@ -8,9 +8,14 @@
  * más cercano, coordenadas, y los elementos abiertos dentro del radio elegido
  * (eventos, cámaras, aeronaves, buques, satélites y sensores de aire). Cada fila
  * abre a su vez la ficha completa de ese elemento.
+ *
+ * Orden de lectura: lugar y cifras → ajustes → listas. Solo la primera lista
+ * con datos se abre sola; las demás muestran su recuento y se despliegan.
  */
 
 import { categoryMeta, timeAgo } from "@/lib/format";
+import { Icon } from "@/components/Icon";
+import { PanelHeader, PanelSection, SummaryStrip } from "@/components/PanelUI";
 import type { ActorKind } from "@/lib/types";
 
 export type PlaceData = {
@@ -72,6 +77,8 @@ type Props = {
   onCenter: () => void;
   onClear: () => void;
   onRefresh: () => void;
+  onExploreThreats?: () => void;
+  onExploreSources?: () => void;
 };
 
 const RADII = [5, 25, 100, 250];
@@ -81,14 +88,14 @@ const SECTIONS: {
   title: string;
   hint: string;
 }[] = [
-  { key: "events", title: "Eventos", hint: "todo el almacén en el radio" },
+  { key: "events", title: "Sucesos", hint: "todo el almacén en el radio" },
   { key: "traffic", title: "Tráfico", hint: "incidencias DGT en vivo" },
   { key: "aircraft", title: "Aeronaves", hint: "ADS-B en este instante" },
   { key: "vessels", title: "Buques", hint: "AIS en este instante" },
-  { key: "trains", title: "Trenes", hint: "Renfe y Amtrak en vivo" },
-  { key: "satellites", title: "Satélites", hint: "posición propagada ahora" },
+  { key: "trains", title: "Trenes", hint: "Renfe, FGC y Amtrak en vivo" },
   { key: "cameras", title: "Cámaras públicas", hint: "imagen abierta en vivo" },
   { key: "air", title: "Calidad del aire", hint: "sensores ciudadanos" },
+  { key: "satellites", title: "Satélites", hint: "posición propagada ahora" },
 ];
 
 const SEVERIDAD_ES: Record<string, string> = {
@@ -103,7 +110,6 @@ const SEVERIDAD_ES: Record<string, string> = {
   red: "crítica",
 };
 
-/** Línea secundaria de cada fila, siempre redactada en español. */
 /** Número con coma decimal, como se escribe en español. */
 function km(v: number | string | undefined): string {
   if (v === undefined || v === null) return "";
@@ -135,12 +141,16 @@ export default function PlacePanel(p: Props) {
 
   if (!p.place) {
     return (
-      <div className="empty">
-        <span className="empty-ico" aria-hidden="true">◎</span>
-        <strong>Pulsa cualquier punto del mapa</strong>
-        Aquí verás qué hay en ese lugar: el país y la región, la ciudad más cercana, las
-        coordenadas exactas y todos los elementos abiertos alrededor (sucesos, cámaras,
-        aeronaves, buques, satélites y sensores de aire). Cada fila abre su ficha completa.
+      <div className="place-start">
+        <div className="place-start-mark" aria-hidden="true"><Icon name="pin" size={25} /></div>
+        <span className="place-start-eyebrow">Exploración territorial</span>
+        <h2>Elige un lugar para empezar</h2>
+        <p>Pulsa el mapa para ver los sucesos y elementos cercanos, con sus fuentes y coordenadas.</p>
+        <div className="place-start-actions">
+          <button className="btn primary" onClick={p.onExploreThreats}><Icon name="warning" size={15} /> Ver amenazas</button>
+          <button className="btn" onClick={p.onExploreSources}><Icon name="sources" size={15} /> Revisar fuentes</button>
+        </div>
+        <div className="place-start-tip">También puedes buscar un país o una fuente en la barra superior.</div>
       </div>
     );
   }
@@ -154,97 +164,108 @@ export default function PlacePanel(p: Props) {
     else p.onPickActor(key as ActorKind, row.id);
   };
 
+  const title = p.place.name || d?.place?.name || "Punto del mapa";
+  const subtitle = [
+    d?.country?.name,
+    d?.country?.continent,
+    d?.place?.region,
+    d?.place && d.place.distance_km > 0.6
+      ? `${d.place.name} a ${km(d.place.distance_km)} km`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ") || "Localizando el entorno del punto…";
+  const firstWithData = d ? SECTIONS.find((s) => (d.counts[s.key] ?? 0) > 0)?.key : undefined;
+  const emptyLayers = d
+    ? SECTIONS.filter((s) => s.key !== "cameras" && (d.counts[s.key] ?? 0) === 0).map((s) => s.title.toLowerCase())
+    : [];
+  const totalCount = d ? Object.values(d.counts).reduce((sum, n) => sum + (n ?? 0), 0) : 0;
+
   return (
     <div data-actualizado={d?.fetched_at ?? 0} data-radio={p.radiusKm}>
-      <div className="section" style={{ paddingTop: 6 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-          <div style={{ minWidth: 0 }}>
-            <div className="section-title" style={{ marginBottom: 2 }}>
-              {p.place.name || d?.place?.name || "Punto del mapa"}
-            </div>
-            <div className="tiny faint">
-              {[
-                d?.country?.name,
-                d?.country?.continent,
-                d?.place?.region,
-                d?.place && d.place.distance_km > 0.6
-                  ? `${d.place.name} a ${km(d.place.distance_km)} km`
-                  : d?.place && !p.place.name
-                    ? `${d.place.name} (${km(d.place.distance_km)} km)`
-                    : null,
-              ]
-                .filter(Boolean)
-                .join(" · ") || "localizando…"}
-            </div>
-          </div>
-          <button className="btn" onClick={p.onClear} title="Cerrar la ficha del lugar">✕</button>
-        </div>
+      <PanelHeader
+        icon="pin"
+        eyebrow="Ficha de lugar"
+        title={title}
+        subtitle={subtitle}
+        meta={
+          <>
+            <span>{fmtCoord(p.place.lat, "lat")} · {fmtCoord(p.place.lon, "lon")}</span>
+            <span className="mono">{p.place.lat.toFixed(3)}, {p.place.lon.toFixed(3)}</span>
+            {d ? <span>actualizado hace {timeAgo(new Date(d.fetched_at).toISOString())}</span> : null}
+          </>
+        }
+        actions={
+          <button className="btn ghost" onClick={p.onClear} title="Cerrar la ficha del lugar" aria-label="Cerrar la ficha del lugar">
+            <Icon name="close" size={15} />
+          </button>
+        }
+      />
 
-        <div className="place-coords mono tiny">
-          <span>{fmtCoord(p.place.lat, "lat")}</span>
-          <span>{fmtCoord(p.place.lon, "lon")}</span>
-          <span className="faint">{p.place.lat.toFixed(5)}, {p.place.lon.toFixed(5)}</span>
-        </div>
+      {d ? (
+        <SummaryStrip
+          items={[
+            { label: "Sucesos", value: d.counts.events, hint: `Sucesos guardados en ${p.radiusKm} km` },
+            { label: "Tráfico", value: d.counts.traffic, tone: "var(--signal)", hint: "Incidencias DGT en vivo" },
+            { label: "Aeronaves", value: d.counts.aircraft, hint: "Aeronaves ADS-B ahora" },
+            { label: "Buques", value: d.counts.vessels, hint: "Buques AIS ahora" },
+            { label: "Trenes", value: d.counts.trains, hint: "Trenes en vivo" },
+            { label: "Cámaras", value: d.counts.cameras, hint: "Cámaras públicas con imagen" },
+            { label: "Satélites", value: d.counts.satellites, hint: "Satélites propagados" },
+            { label: "Aire", value: d.counts.air, hint: "Sensores de calidad del aire" },
+          ]}
+        />
+      ) : null}
 
-        <div className="btn-row" style={{ marginTop: 8 }}>
+      <div className="pn-tools">
+        <div className="pn-tool-row">
           <button className="btn primary" onClick={p.onCenter} title="Centrar el mapa en este punto">
-            ◎ Centrar aquí
+            <Icon name="locate" size={15} /> Centrar aquí
           </button>
           <button className="btn" onClick={p.onRefresh} title="Volver a consultar ahora">
-            {p.loading ? <span className="spinner" /> : "↻"} Actualizar
+            {p.loading ? <span className="spinner" /> : <Icon name="refresh" size={15} />} Actualizar
           </button>
         </div>
 
-        <div className="place-radii" role="group" aria-label="Radio de búsqueda">
-          <span className="tiny faint" style={{ marginRight: 4 }}>Radio</span>
-          {RADII.map((km) => (
+        <div className="pn-tool-row" role="group" aria-label="Radio de búsqueda">
+          <span className="tiny faint">Radio</span>
+          {RADII.map((radius) => (
             <button
-              key={km}
-              className={`chip ${p.radiusKm === km ? "active" : ""}`}
-              onClick={() => p.onRadius(km)}
-              title={`Buscar en ${km} km a la redonda`}
+              key={radius}
+              className={`chip ${p.radiusKm === radius ? "active" : ""}`}
+              onClick={() => p.onRadius(radius)}
+              title={`Buscar en ${radius} km a la redonda`}
             >
-              {km} km
+              {radius} km
             </button>
           ))}
         </div>
 
-        {d && (
-          <>
-            <div className="tiny faint" style={{ marginTop: 8, lineHeight: 1.55 }}>
-              {d.summary} · actualizado hace {timeAgo(new Date(d.fetched_at).toISOString())}
-            </div>
-            <div className="place-window" role="group" aria-label="Ventana de tiempo de los eventos">
-              <span className="tiny faint">Eventos de</span>
-              {[24, 168, 720].map((h) => (
-                <button
-                  key={h}
-                  className={`chip ${p.windowHours === h ? "active" : ""}`}
-                  onClick={() => p.onWindow(h)}
-                  title={
-                    h === 24 ? "Últimas 24 horas"
-                    : h === 168 ? "Última semana (por defecto)"
-                    : "Últimos 30 días"
-                  }
-                >
-                  {h === 24 ? "24 h" : h === 168 ? "7 días" : "30 días"}
-                </button>
-              ))}
-            </div>
-            <div className="row-2" style={{ marginTop: 9 }}>
-              {SECTIONS.map((s) => (
-                <div className="mini-stat" key={s.key} title={s.hint}>
-                  <div className="ms-label">{s.title.replace("Cámaras públicas", "Cámaras")}</div>
-                  <div className="ms-value">{d.counts[s.key]}</div>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
+        <div className="pn-tool-row" role="group" aria-label="Ventana de tiempo de los eventos">
+          <span className="tiny faint">Sucesos de</span>
+          {[24, 168, 720].map((h) => (
+            <button
+              key={h}
+              className={`chip ${p.windowHours === h ? "active" : ""}`}
+              onClick={() => p.onWindow(h)}
+              title={h === 24 ? "Últimas 24 horas" : h === 168 ? "Última semana (por defecto)" : "Últimos 30 días"}
+            >
+              {h === 24 ? "24 h" : h === 168 ? "7 días" : "30 días"}
+            </button>
+          ))}
+        </div>
       </div>
 
+      {d?.summary ? <p className="pn-lede">{d.summary}</p> : null}
+
+      {d && totalCount === 0 && (
+        <p className="pn-lede">
+          No hay elementos de las capas activas en este radio. Amplía el radio o elige otro punto del mapa.
+        </p>
+      )}
+
       {p.loading && !d && (
-        <div className="section">
+        <div className="pn-tools">
           <div className="source-row" style={{ padding: 0 }}>
             <span className="spinner" />
             <span className="source-name tiny">Consultando el entorno del punto…</span>
@@ -252,23 +273,23 @@ export default function PlacePanel(p: Props) {
         </div>
       )}
 
-      {d &&
-        SECTIONS.map((s) => {
+      {d && totalCount > 0 &&
+        SECTIONS.filter((s) => (d.counts[s.key] ?? 0) > 0 || s.key === "cameras").map((s) => {
           const rows = rowsFor(s.key);
           const n = d.counts[s.key];
           return (
-            <div className="section" key={s.key}>
-              <div className="section-title">
-                <span>{s.title}</span>
-                <span className="layer-badge">{n}</span>
-              </div>
-              <div className="tiny faint" style={{ marginBottom: rows.length ? 6 : 0 }}>
-                {s.hint}
-              </div>
+            <PanelSection
+              key={s.key}
+              title={s.title}
+              count={n}
+              hint={s.hint}
+              defaultOpen={s.key === firstWithData}
+            >
+              <div className="tiny faint" style={{ marginBottom: rows.length ? 6 : 0 }}>{s.hint}</div>
               {rows.length === 0 && s.key === "cameras" && (
                 <div className="cov-note">
                   No hay cámaras públicas con imagen abierta en {p.radiusKm} km. Solo cinco redes
-                  publican sin clave (País Vasco, Londres, California, Nueva York y Helsinki): fuera
+                  publican sin clave (País Vasco, Londres, California, Nueva York y Finlandia): fuera
                   de ellas no existen cámaras accesibles y no se simulan.
                 </div>
               )}
@@ -288,22 +309,25 @@ export default function PlacePanel(p: Props) {
                   <span className={`place-dot place-dot-${s.key}`} />
                   <div className="event-main">
                     <div className="event-title">{row.title || row.id}</div>
-                    {metaDe(s.key, row) && (
-                      <div className="event-sub">{metaDe(s.key, row)}</div>
-                    )}
+                    {metaDe(s.key, row) && <div className="event-sub">{metaDe(s.key, row)}</div>}
                   </div>
                   <span className="tiny faint">›</span>
                 </div>
               ))}
               {n > rows.length && (
                 <div className="tiny faint" style={{ marginTop: 4 }}>
-                  {n - rows.length} más sin listar: pulsa «Centrar aquí» sobre una zona más
-                  pequeña o reduce el radio para verlos todos.
+                  {n - rows.length} más sin listar: reduce el radio para verlos todos.
                 </div>
               )}
-            </div>
+            </PanelSection>
           );
         })}
+
+      {d && totalCount > 0 && emptyLayers.length > 0 && (
+        <div className="pn-note" style={{ padding: "10px 14px" }}>
+          Sin datos en este radio: {emptyLayers.join(", ")}.
+        </div>
+      )}
     </div>
   );
 }

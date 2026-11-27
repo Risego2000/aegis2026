@@ -5,13 +5,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import Breakdown, { type BreakdownItem, type BreakdownSpec } from "@/components/Breakdown";
 import Help from "@/components/Help";
+import { Icon } from "@/components/Icon";
 import RightPanel, { type Tab } from "@/components/RightPanel";
 import type { PlaceData } from "@/components/PlacePanel";
-import SidePanel, { type LayerCounts } from "@/components/SidePanel";
+import SidePanel, { BASEMAP_IDS, type LayerCounts } from "@/components/SidePanel";
 import Timeline from "@/components/Timeline";
 import TopBar from "@/components/TopBar";
 import { api, apiUrl, assetUrl, wsUrl } from "@/lib/api";
-import { CATEGORY_META, timeAgo } from "@/lib/format";
+import { locateMe } from "@/lib/geo";
+import { CATEGORY_META, fmtNumber, timeAgo } from "@/lib/format";
 import type {
   ActorDetail, ActorKind, ActorTrack, Alert, AppConfig, Briefing, EventFeature, FeatureCollection,
   Fence, Health, LiveCollection,
@@ -29,6 +31,39 @@ const MapView = dynamic(() => import("@/components/MapView"), {
 const ALL_CATS = Object.keys(CATEGORY_META);
 /** Ventana del archivo: coincide con RETENTION_DAYS por defecto (7 días). */
 const RETENTION_H = 168;
+
+const VIEW_PRESETS = [
+  {
+    id: "general", label: "General", basemap: "operativo",
+    hint: "Panorama de todas las fuentes principales",
+    layers: ["events", "aircraft", "vessels", "satellites", "cameras", "trains", "fences", "places", "graticule"],
+  },
+  {
+    id: "events", label: "Sucesos", basemap: "operativo",
+    hint: "Sucesos y lugares, sin tráfico en vivo",
+    layers: ["events", "fences", "places"],
+  },
+  {
+    id: "movement", label: "Movilidad", basemap: "detalle",
+    hint: "Aeronaves, buques, trenes y cámaras sobre el callejero",
+    layers: ["aircraft", "vessels", "trains", "cameras", "places"],
+  },
+] as const;
+
+const VIEW_LAYERS = ["events", "aircraft", "vessels", "satellites", "cameras", "air", "trains", "fences", "places", "graticule"];
+
+/** Filtros rápidos: cada uno enciende o apaga una capa completa del mapa. */
+const QUICK_FILTERS = [
+  { key: "events", label: "Sucesos", icon: "event" },
+  { key: "aircraft", label: "Aeronaves", icon: "plane" },
+  { key: "vessels", label: "Buques", icon: "ship" },
+  { key: "trains", label: "Trenes", icon: "train" },
+  { key: "cameras", label: "Cámaras", icon: "camera" },
+  { key: "satellites", label: "Satélites", icon: "satellite" },
+  { key: "air", label: "Aire", icon: "air" },
+  { key: "places", label: "Lugares", icon: "city" },
+  { key: "fences", label: "Zonas", icon: "target" },
+] as const;
 
 /** Mensaje de error legible: sin HTML ni trazas kilométricas. */
 function friendlyError(err: any): string {
@@ -53,11 +88,16 @@ export default function Page() {
   const [air, setAir] = useState<LiveCollection | null>(null);
   const [trains, setTrains] = useState<LiveCollection | null>(null);
   const [cameraId, setCameraId] = useState<string | null>(null);
-  // fondo de mapa: por defecto el callejero (detalle tipo mapas comerciales);
-  // oscuro/claro/satélite quedan a un clic y se recuerdan entre sesiones
+  // fondo de mapa: se recuerda entre sesiones. Los nombres anteriores
+  // (vectorial, oscuro, satelite, transporte) se traducen a los actuales.
   const [basemap, setBasemap] = useState<string>(() => {
-    if (typeof window === "undefined") return "vectorial";
-    return window.localStorage.getItem("aegis.basemap") || "vectorial";
+    if (typeof window === "undefined") return "operativo";
+    const saved = window.localStorage.getItem("aegis.basemap") || "";
+    const legacy: Record<string, string> = {
+      vectorial: "operativo", oscuro: "detalle", satelite: "imagen", transporte: "detalle",
+    };
+    const id = legacy[saved] || saved;
+    return BASEMAP_IDS.includes(id) ? id : "operativo";
   });
   const onBasemap = useCallback((id: string) => {
     setBasemap(id);
@@ -77,6 +117,19 @@ export default function Page() {
     events: true, aircraft: true, vessels: true, satellites: true,
     cameras: true, air: false, trains: true, fences: true, places: true, graticule: true,
   });
+  const activeView = VIEW_PRESETS.find((preset) =>
+    preset.basemap === basemap && VIEW_LAYERS.every((key) =>
+      (visible[key] !== false) === (preset.layers as readonly string[]).includes(key)
+    )
+  )?.id;
+  const selectView = (preset: typeof VIEW_PRESETS[number]) => {
+    setVisible(Object.fromEntries(VIEW_LAYERS.map((key) => [key, (preset.layers as readonly string[]).includes(key)])));
+    onBasemap(preset.basemap);
+    setLeftOpen(false);
+  };
+  const toggleVisible = (key: (typeof QUICK_FILTERS)[number]["key"]) => {
+    setVisible((prev) => ({ ...prev, [key]: prev[key] === false }));
+  };
   const [terrain, setTerrain] = useState(false);
   const [aoiMode, setAoiMode] = useState(false);
   const [aoiRadiusKm, setAoiRadiusKm] = useState(200);
@@ -113,6 +166,21 @@ export default function Page() {
   const [placeNonce, setPlaceNonce] = useState(0);
 
   const [layerCounts, setLayerCounts] = useState<LayerCounts | null>(null);
+
+  /** Recuento disponible por capa, para que el filtro diga cuánto se oculta. */
+  const quickCount = (key: (typeof QUICK_FILTERS)[number]["key"]): number | null => {
+    switch (key) {
+      case "events": return layerCounts?.events.total ?? null;
+      case "aircraft": return layerCounts?.aircraft ?? null;
+      case "vessels": return layerCounts?.vessels ?? null;
+      case "trains": return layerCounts?.trains ?? null;
+      case "cameras": return layerCounts?.cameras.total ?? null;
+      case "satellites": return layerCounts?.satellites ?? null;
+      case "air": return layerCounts?.air ?? null;
+      case "places": return layerCounts?.places ?? null;
+      case "fences": return fenceDefs.length;
+    }
+  };
   const [showHelp, setShowHelp] = useState(false);
   const [wsState, setWsState] = useState<"connecting" | "open" | "closed">("connecting");
   const [notifyOn, setNotifyOn] = useState(false);
@@ -263,8 +331,20 @@ export default function Page() {
   /* service worker: armazón sin red + notificaciones */
   useEffect(() => {
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
-    navigator.serviceWorker.register(assetUrl("/sw.js")).catch(() => {});
+    // Si había un service worker antiguo controlando la página, al activarse el
+    // nuevo se recarga una vez para que el armazón cacheado no siga mostrando
+    // la interfaz anterior (filtros, leyenda y controles descolocados).
+    const hadController = !!navigator.serviceWorker.controller;
+    const onControllerChange = () => {
+      if (hadController) window.location.reload();
+    };
+    navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
+    navigator.serviceWorker
+      .register(assetUrl("/sw.js"), { updateViaCache: "none" })
+      .then((reg) => reg.update().catch(() => {}))
+      .catch(() => {});
     if ("Notification" in window && Notification.permission === "granted") setNotifyOn(true);
+    return () => navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
   }, []);
 
   /* atajo de teclado: ? abre la guía */
@@ -695,18 +775,13 @@ export default function Page() {
   );
 
   /* «Mi ubicación» → ficha de Lugar centrada en el usuario. Funciona desde el
-     botón del mapa y desde el ◎ del buscador: en ambos casos se abre el panel
+     botón del mapa y desde el control de ubicación del buscador: en ambos casos se abre el panel
      con lo que hay alrededor (sucesos, tráfico aéreo, cámaras, trenes…). */
   useEffect(() => {
     const q = query.trim().toLowerCase();
     if (!["cerca", "cerca de mí", "cerca de mi", "aqui", "aquí", "mi ubicacion", "mi ubicación"].includes(q)) return;
     setQuery("");
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      (pos) => window.dispatchEvent(new CustomEvent("aegis:me", { detail: { lat: pos.coords.latitude, lon: pos.coords.longitude } })),
-      () => {},
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 },
-    );
+    locateMe();
   }, [query]);
 
   useEffect(() => {
@@ -724,6 +799,24 @@ export default function Page() {
     };
     window.addEventListener("aegis:me", alUbicarme as EventListener);
     return () => window.removeEventListener("aegis:me", alUbicarme as EventListener);
+  }, []);
+
+  /* Si el navegador bloquea o no encuentra la ubicación, se avisa en vez de
+     dejar el botón sin respuesta aparente. */
+  useEffect(() => {
+    const alFallarUbicacion = (e: Event) => {
+      const message = (e as CustomEvent<{ message?: string }>).detail?.message
+        || "No se pudo obtener tu ubicación.";
+      const alert: Alert = {
+        ts: new Date().toISOString(), fence_id: null, actor_id: "-", actor_type: "geo",
+        event_type: "error", severity: "info", title: "Ubicación no disponible", message,
+        lat: null, lon: null, payload: {},
+      };
+      setToasts((prev) => [alert, ...prev].slice(0, 4));
+      setTimeout(() => setToasts((prev) => prev.filter((t) => t !== alert)), 9000);
+    };
+    window.addEventListener("aegis:geo-error", alFallarUbicacion as EventListener);
+    return () => window.removeEventListener("aegis:geo-error", alFallarUbicacion as EventListener);
   }, []);
 
   const placeKey = place
@@ -871,17 +964,18 @@ export default function Page() {
     if (key === "trains") {
       setBreakdown({
         kind: "inline",
-        title: "Trenes de Renfe en vivo",
+        title: "Trenes en vivo",
         subtitle: trains && trains.features.length
-          ? "GTFS-Realtime · pulsa uno para abrir su ficha"
-          : "sin servicio ahora mismo: el feed de Renfe está vacío hasta primera hora",
+          ? "GTFS-Realtime · Renfe, FGC y Amtrak · pulsa uno para abrir su ficha"
+          : "sin servicio ahora mismo: los feeds no publican trenes en este instante",
         items: (trains?.features ?? []).map((f: any) => ({
           id: `trains:${f.properties.id}`,
           title: `${f.properties.line || f.properties.name || "tren"} · ${f.properties.status || ""}`.trim(),
           sub: [f.properties.nucleo, f.properties.operator,
                 f.properties.delay_s != null ? `${Math.round(Number(f.properties.delay_s) / 60)} min de retraso` : null]
             .filter(Boolean).join(" · "),
-          color: "#ffb454",
+          color: f.properties.network === "amtrak" ? "#9ecbff"
+            : f.properties.network === "fgc" ? "#8ee6a8" : "#ffb454",
           lat: f.geometry?.coordinates?.[1],
           lon: f.geometry?.coordinates?.[0],
         })),
@@ -1119,8 +1213,6 @@ export default function Page() {
           categoryCounts={categoryCounts}
           activeCats={activeCats}
           toggleCat={toggleCat}
-          hours={hours}
-          setHours={setHours}
           fences={fenceDefs}
           aoiMode={aoiMode}
           setAoiMode={setAoiMode}
@@ -1143,6 +1235,57 @@ export default function Page() {
         />
 
         <div className="map-col">
+          <nav className="map-views map-overlay" aria-label="Vistas y filtros de visibilidad del mapa">
+            <div className="map-views-row">
+              <span className="map-views-title">Explorar</span>
+              <div className="map-views-options">
+                {VIEW_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    className={`map-view-option ${activeView === preset.id ? "active" : ""}`}
+                    onClick={() => selectView(preset)}
+                    aria-pressed={activeView === preset.id}
+                    title={preset.hint}
+                  >{preset.label}</button>
+                ))}
+              </div>
+              {!activeView && (
+                <span className="map-views-custom">
+                  Personalizada
+                  <button className="map-views-reset" onClick={() => selectView(VIEW_PRESETS[0])} title="Volver a la vista General">
+                    Restablecer
+                  </button>
+                </span>
+              )}
+            </div>
+
+            <div className="map-views-row map-views-filters">
+              <span className="map-views-title">Capas</span>
+              <div className="map-filters" role="group" aria-label="Capas visibles en el mapa">
+                {QUICK_FILTERS.map((filter) => {
+                  const on = visible[filter.key] !== false;
+                  const count = quickCount(filter.key);
+                  return (
+                    <button
+                      key={filter.key}
+                      type="button"
+                      className={`map-filter ${on ? "on" : "off"}`}
+                      onClick={() => toggleVisible(filter.key)}
+                      aria-pressed={on}
+                      aria-label={`${on ? "Ocultar" : "Mostrar"} ${filter.label} en el mapa`}
+                      title={`${on ? "Ocultar" : "Mostrar"} ${filter.label}${count !== null ? ` · ${fmtNumber(count)} disponibles` : ""}`}
+                      data-filter={filter.key}
+                      data-on={on}
+                    >
+                      <Icon name={filter.icon} size={13} />
+                      <span>{filter.label}</span>
+                      {count !== null && <b>{fmtNumber(count)}</b>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </nav>
           <MapView
             events={events}
             aircraft={aircraft}
@@ -1177,24 +1320,32 @@ export default function Page() {
               title="Terreno 3D (requiere conexión)"
               onClick={() => setTerrain((v) => !v)}
             >
-              ▴
+              <Icon name="terrain" size={17} />
             </button>
             <button
               className={`map-tool ${visible.graticule ? "active" : ""}`}
               title="Retícula"
               onClick={() => setVisible({ ...visible, graticule: !visible.graticule })}
             >
-              ⊞
+              <Icon name="grid" size={17} />
             </button>
             <button
               className={`map-tool ${visible.places ? "active" : ""}`}
               title="Núcleos urbanos"
               onClick={() => setVisible({ ...visible, places: !visible.places })}
             >
-              ◌
+              <Icon name="city" size={17} />
             </button>
-            <button className="map-tool" title="Centrar" onClick={() => flyTo(center[1], center[0], zoom)}>
-              ⊕
+            <button
+              className="map-tool"
+              title="Mi ubicación"
+              aria-label="Mi ubicación"
+              onClick={() => locateMe((lat, lon) => {
+                const map = (window as any).__aegisMap;
+                map?.easeTo({ center: [lon, lat], zoom: Math.max(Number(map.getZoom?.() ?? 9), 9), duration: 900 });
+              })}
+            >
+              <Icon name="locate" size={17} />
             </button>
             <button
               className="map-tool mobile-only"
@@ -1202,7 +1353,7 @@ export default function Page() {
               aria-label="Panel de análisis"
               onClick={() => setRightOpen((v) => !v)}
             >
-              ☰
+              <Icon name="panel" size={17} />
             </button>
           </div>
         </div>
@@ -1270,7 +1421,7 @@ export default function Page() {
         setHours={setHours}
         onSelect={(f) => onSelect(f)}
         alertsCount={criticalAlerts}
-        onOpenAlerts={() => { setTab("alerts"); setNewAlerts(0); }}
+        onOpenAlerts={() => { setTab("alerts"); setNewAlerts(0); setRightOpen(true); setLeftOpen(false); }}
       />
 
       {apiDown && (

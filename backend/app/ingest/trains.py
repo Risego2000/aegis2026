@@ -1,19 +1,24 @@
-"""Trenes de España — GTFS-Realtime de Renfe + índice estático.
+"""Trenes en vivo de todos los operadores que publican datos abiertos.
 
-Además de las posiciones (Cercanías y AVE/Largo Recorrido), este módulo aporta
-las **incidencias de servicio** de Renfe (`alerts.json`) como sucesos de la capa
-de eventos: tienen hora, línea afectada y texto oficial, así que se pintan en el
-mapa con el resto de la inteligencia.
+· Renfe: GTFS-Realtime JSON de Cercanías y AVE/Largo Recorrido, más las
+  **incidencias de servicio** (`alerts.json`) como sucesos geolocalizados.
+· FGC (Ferrocarrils de la Generalitat de Catalunya): GTFS-Realtime protobuf.
+· Amtrak: feed JSON de amtraker.com.
 
-Los otros dos operadores de alta velocidad (Ouigo e Iryo) no publican ni
-posiciones ni incidencias: no se inventan.
+Ouigo e Iryo, los otros dos operadores de alta velocidad en España, no
+publican posiciones ni incidencias: no se inventan. Euskotren anuncia GTFS-RT
+en el NAP, pero su fichero llega vacío y el SIRI exige sesión, así que tampoco
+se muestra.
 """
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
+from urllib.parse import quote
 
 from ..models import EventRecord, utcnow
+from . import gtfsrt
 from .client import Fetcher
 
 log = logging.getLogger("aegis.trains")
@@ -29,6 +34,28 @@ LARGO_RECORRIDO_URL = "https://gtfsrt.renfe.com/vehicle_positions_LD.json"
 AMTRAK_URL = "https://api-v3.amtraker.com/v3/trains"
 TRIP_UPDATES_CER = "https://gtfsrt.renfe.com/trip_updates.json"
 TRIP_UPDATES_LD = "https://gtfsrt.renfe.com/trip_updates_LD.json"
+
+# --- FGC (Ferrocarrils de la Generalitat de Catalunya) ---------------------
+# Publica posiciones GTFS-Realtime solo en protobuf, como fichero de un dataset
+# de Opendatasoft: primero se resuelve la URL del fichero y luego se descarga.
+# Los viajes, líneas y paradas se resuelven con sus datasets estáticos, que se
+# cachean 24 h (los service_id cambian a diario).
+FGC_DATASET = ("https://dadesobertes.fgc.cat/api/explore/v2.1/catalog/datasets/"
+               "vehicle-positions-gtfs_realtime/records?limit=1")
+FGC_TRIPS = ("https://dadesobertes.fgc.cat/api/explore/v2.1/catalog/datasets/"
+             "trips/exports/json?select=trip_id,route_id,trip_headsign"
+             "&where=service_id%3D%22{sid}%22")
+FGC_ROUTES = ("https://dadesobertes.fgc.cat/api/explore/v2.1/catalog/datasets/"
+              "gtfs_routes/exports/json?select=route_id,route_long_name")
+FGC_STOPS = ("https://dadesobertes.fgc.cat/api/explore/v2.1/catalog/datasets/"
+             "gtfs_stops/exports/json?select=stop_id,stop_name")
+FGC_MIN_INTERVAL_S = 45.0
+FGC_META_TTL_S = 24 * 3600
+
+_fgc_last_run = 0.0
+_fgc_trips: dict[str, tuple[float, dict[str, dict]]] = {}
+_fgc_routes: tuple[float, dict[str, str]] = (0.0, {})
+_fgc_stops: tuple[float, dict[str, str]] = (0.0, {})
 
 # Núcleos de Cercanías por los dos primeros dígitos del trip_id
 NUCLEOS = {
@@ -217,8 +244,155 @@ def parse_amtrak(payload: dict) -> list[dict[str, Any]]:
     return rows
 
 
+async def _fgc_trip_table(fetcher: Fetcher, service_id: str) -> dict[str, dict]:
+    """trip_id → línea y destino para un service_id (se cachea un día)."""
+    now = time.time()
+    cached = _fgc_trips.get(service_id)
+    if cached and now - cached[0] < FGC_META_TTL_S:
+        return cached[1]
+    data = await fetcher.get_json(FGC_TRIPS.format(sid=quote(service_id, safe="")),
+                                  retries=1, timeout=45)
+    table: dict[str, dict] = {}
+    for row in data if isinstance(data, list) else []:
+        if not isinstance(row, dict):
+            continue
+        trip_id = str(row.get("trip_id") or "")
+        if trip_id:
+            table[trip_id] = {
+                "route": str(row.get("route_id") or ""),
+                "headsign": str(row.get("trip_headsign") or ""),
+            }
+    _fgc_trips[service_id] = (now, table)
+    for sid in [k for k, (ts, _) in _fgc_trips.items() if now - ts > 2 * FGC_META_TTL_S]:
+        _fgc_trips.pop(sid, None)
+    return table
+
+
+async def _fgc_routes_table(fetcher: Fetcher) -> dict[str, str]:
+    global _fgc_routes
+    now = time.time()
+    if _fgc_routes[1] and now - _fgc_routes[0] < FGC_META_TTL_S:
+        return _fgc_routes[1]
+    data = await fetcher.get_json(FGC_ROUTES, retries=1, timeout=30)
+    table = {
+        str(r.get("route_id")): str(r.get("route_long_name") or "")
+        for r in (data if isinstance(data, list) else [])
+        if isinstance(r, dict) and r.get("route_id")
+    }
+    _fgc_routes = (now, table)
+    return table
+
+
+async def _fgc_stops_table(fetcher: Fetcher) -> dict[str, str]:
+    global _fgc_stops
+    now = time.time()
+    if _fgc_stops[1] and now - _fgc_stops[0] < FGC_META_TTL_S:
+        return _fgc_stops[1]
+    data = await fetcher.get_json(FGC_STOPS, retries=1, timeout=30)
+    table = {
+        str(r.get("stop_id")): str(r.get("stop_name") or "")
+        for r in (data if isinstance(data, list) else [])
+        if isinstance(r, dict) and r.get("stop_id")
+    }
+    _fgc_stops = (now, table)
+    return table
+
+
+def parse_fgc(vehicles: list[dict[str, Any]], trips: dict[str, dict],
+              routes: dict[str, str], stops: dict[str, str]) -> list[dict[str, Any]]:
+    """Posiciones GTFS-RT de FGC → actores de la capa viva."""
+    rows: list[dict[str, Any]] = []
+    for vp in vehicles:
+        lat, lon = vp.get("lat"), vp.get("lon")
+        if lat is None or lon is None:
+            continue
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            continue
+        trip_id = str(vp.get("trip_id") or "")
+        info = trips.get(trip_id) or {}
+        route = str(info.get("route") or vp.get("route_id") or "")
+        headsign = str(info.get("headsign") or "")
+        stop_id = str(vp.get("stop_id") or "")
+        vid = str(vp.get("vehicle_id") or vp.get("label") or trip_id or f"{lat:.4f}{lon:.4f}")
+        speed = vp.get("speed")
+        bearing = vp.get("bearing")
+        status = str(vp.get("status") or "")
+        # Las líneas L* son el metro de Barcelona (L6, L7, L8, L12); R* y S*
+        # son cercanías. El icono del mapa cambia con este campo.
+        service = "metro" if route[:1].upper() == "L" else "cercanías"
+        name = f"FGC {route} · {headsign}".strip(" ·") if route else f"FGC {vid}"
+
+        rows.append({
+            "id": f"fgc:{vid}",
+            "name": name,
+            "label": vid,
+            "line": route,
+            "line_label": route,
+            "trip_id": trip_id,
+            "lat": lat,
+            "lon": lon,
+            "speed_kmh": round(float(speed) * 3.6, 1) if speed is not None else None,
+            "track": bearing,
+            "status": STATUS_ES.get(status, status or "sin estado"),
+            "nucleo": "Catalunya",
+            "next_stop": stop_id,
+            "next_stop_name": stops.get(stop_id, ""),
+            "destination": headsign,
+            "route_name": routes.get(route, ""),
+            "service": service,
+            "delay_s": None,
+            "operator": "FGC",
+            "network": "fgc",
+            "kind": "tren",
+            "country": "ES",
+            "source": "dadesobertes.fgc.cat",
+        })
+    return rows
+
+
+async def _refresh_fgc(fetcher: Fetcher) -> list[dict[str, Any]]:
+    """Feed de FGC: resuelve el fichero del dataset y lo decodifica."""
+    global _fgc_last_run
+    now = time.time()
+    if now - _fgc_last_run < FGC_MIN_INTERVAL_S:
+        return []
+    _fgc_last_run = now
+
+    listing = await fetcher.get_json(FGC_DATASET, retries=1, timeout=25)
+    url = ""
+    for record in (listing or {}).get("results") or []:
+        file = (record or {}).get("file") or {}
+        if file.get("url"):
+            url = str(file["url"])
+            break
+    if not url:
+        return []
+    blob = await fetcher.get_bytes(url, retries=1, timeout=30)
+    vehicles = gtfsrt.parse_vehicles(blob)
+    if not vehicles:
+        log.info("trenes FGC: el feed no trae posiciones ahora mismo")
+        return []
+
+    service_ids = {str(v.get("trip_id") or "").split("|", 1)[0] for v in vehicles}
+    trips: dict[str, dict] = {}
+    for sid in sorted(s for s in service_ids if s):
+        try:
+            trips.update(await _fgc_trip_table(fetcher, sid))
+        except Exception as exc:  # noqa: BLE001 - sin índice se muestra igual
+            log.warning("trenes FGC: viajes de %s: %s", sid, exc)
+    try:
+        routes = await _fgc_routes_table(fetcher)
+    except Exception:  # noqa: BLE001 - el nombre largo es opcional
+        routes = _fgc_routes[1]
+    try:
+        stops = await _fgc_stops_table(fetcher)
+    except Exception:  # noqa: BLE001 - el nombre de parada es opcional
+        stops = _fgc_stops[1]
+    return parse_fgc(vehicles, trips, routes, stops)
+
+
 async def refresh(fetcher: Fetcher, index=None) -> int:
-    """Descarga ambas familias de feeds y alimenta la capa TRAINS."""
+    """Descarga los feeds de todos los operadores y alimenta la capa TRAINS."""
     from ..live import TRAINS
 
     total = 0
@@ -242,6 +416,18 @@ async def refresh(fetcher: Fetcher, index=None) -> int:
         rows.extend(parsed)
         total += len(parsed)
         log.info("trenes %s: %d unidades", network, len(parsed))
+
+    # FGC (Cataluña): junto a Renfe, el único operador ferroviario español con
+    # posiciones abiertas. Ouigo e Iryo no las publican.
+    try:
+        fgc_rows = await _refresh_fgc(fetcher)
+        if fgc_rows:
+            TRAINS.upsert_many(fgc_rows)
+            rows.extend(fgc_rows)
+            total += len(fgc_rows)
+            log.info("trenes FGC: %d unidades", len(fgc_rows))
+    except Exception as exc:  # noqa: BLE001 - un feed caído no tumba al resto
+        log.warning("trenes FGC: %s", exc)
 
     # Amtrak: sigue aunque Renfe esté de madrugada, así la capa enseña trenes
     try:

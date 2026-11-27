@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
+import { Icon, type IconName } from "@/components/Icon";
+import { PanelHeader, PanelSection, SummaryStrip } from "@/components/PanelUI";
 
 /* ---------------------------------------------------------------------------
    Ficha completa de un elemento móvil (aeronave / buque / satélite).
@@ -269,12 +271,20 @@ export type ActorLike = {
   onClear?: () => void;
 };
 
-const KIND_META: Record<string, { icon: string; title: string; color: string }> = {
-  aircraft: { icon: "✈", title: "Aeronave", color: "#4dd0e1" },
-  vessels: { icon: "⚓", title: "Buque", color: "#57d9c3" },
-  satellites: { icon: "🛰", title: "Satélite", color: "#7ee7ff" },
-  air: { icon: "🜁", title: "Sensor de calidad del aire", color: "#a5d6a7" },
-  trains: { icon: "🚆", title: "Tren de Renfe", color: "#ffb454" },
+const KIND_META: Record<string, { icon: IconName; title: string; color: string }> = {
+  aircraft: { icon: "plane", title: "Aeronave", color: "#4dd0e1" },
+  vessels: { icon: "ship", title: "Buque", color: "#57d9c3" },
+  satellites: { icon: "satellite", title: "Satélite", color: "#7ee7ff" },
+  air: { icon: "air", title: "Sensor de calidad del aire", color: "#a5d6a7" },
+  trains: { icon: "train", title: "Tren en vivo", color: "#ffb454" },
+};
+
+/** Código interno de red → nombre legible en la ficha. */
+const NETWORK_ES: Record<string, string> = {
+  "renfe-cercanias": "Renfe Cercanías",
+  "renfe-ld": "Renfe AVE/LD/MD",
+  fgc: "FGC",
+  amtrak: "Amtrak",
 };
 
 export default function ActorCard(p: ActorLike) {
@@ -306,6 +316,72 @@ export default function ActorCard(p: ActorLike) {
   const orbit = d?.orbit ?? null;
   const state = d?.state ?? null;
 
+  // Cuatro cifras que resumen el elemento antes de entrar en detalles. El
+  // resto de campos sigue disponible, plegado, al final de la ficha.
+  const metrics = (() => {
+    if (p.kind === "trains") {
+      return [
+        { label: "Línea", value: actor.line_label || actor.line || "—" },
+        { label: "Destino", value: actor.destination || d?.itinerary?.destination || "—" },
+                { label: "Retraso min",
+          value: actor.delay_s != null ? fmt(Math.round(Number(actor.delay_s) / 60)) : "—",
+          tone: Number(actor.delay_s) > 300 ? "var(--warn)" : undefined,
+        },
+        { label: "Vel. km/h", value: actor.speed_kmh != null ? fmt(actor.speed_kmh) : "—" },
+      ];
+    }
+    if (p.kind === "vessels") {
+      return [
+        { label: "Vel. kt", value: actor.sog != null || actor.speed_kn != null ? fmt(actor.sog ?? actor.speed_kn) : "—" },
+        { label: "Rumbo °", value: actor.cog != null || actor.course != null ? fmt(actor.cog ?? actor.course) : "—" },
+        { label: "Tipo", value: actor.ship_type || actor.type || "—" },
+        { label: "Calado m", value: actor.draught != null ? fmt(actor.draught) : actor.dimension || "—" },
+      ];
+    }
+    if (p.kind === "satellites") {
+      return [
+        { label: "Altitud km", value: actor.altitude_km != null ? fmt(actor.altitude_km) : "—" },
+        { label: "Vel. km/s", value: actor.speed_km_s != null ? fmt(actor.speed_km_s) : "—" },
+        { label: "Incl. °", value: actor.inclination != null ? fmt(actor.inclination) : "—" },
+        { label: "Periodo", value: actor.period_min != null ? fmt(actor.period_min) : "—" },
+      ];
+    }
+    if (p.kind === "air") {
+      return [
+        { label: "PM2.5", value: actor.pm25 != null ? `${fmt(actor.pm25)}` : "—" },
+        { label: "PM10", value: actor.pm10 != null ? `${fmt(actor.pm10)}` : "—" },
+        { label: "Índice", value: actor.level || "—" },
+        { label: "Temp. °C", value: actor.temp_c != null ? fmt(actor.temp_c) : "—" },
+      ];
+    }
+    return [
+      {
+        label: actor.altitude_ft != null || actor.alt_baro != null || actor.altitude_km == null ? "Altitud ft" : "Altitud km",
+        value: actor.altitude_ft != null || actor.alt_baro != null || actor.altitude_km != null
+          ? fmt(actor.altitude_ft ?? actor.alt_baro ?? actor.altitude_km)
+          : "—",
+      },
+      {
+        label: "Vel. kt",
+        value: actor.speed_kn != null || actor.gs != null ? fmt(actor.speed_kn ?? actor.gs) : "—",
+      },
+      {
+        label: "Rumbo °",
+        value: actor.track != null || actor.heading != null || actor.course != null
+          ? fmt(actor.track ?? actor.heading ?? actor.course)
+          : "—",
+      },
+      { label: "Squawk", value: actor.squawk || "—" },
+    ];
+  })();
+
+  const identity = [
+    actor.registration,
+    actor.type || actor.ship_type,
+    actor.operator || actor.airline,
+    actor.country,
+  ].filter(Boolean).slice(0, 3).join(" · ");
+
   const copy = () => {
     navigator.clipboard?.writeText(JSON.stringify(d, null, 2)).then(() => {
       setCopied(true);
@@ -333,49 +409,57 @@ export default function ActorCard(p: ActorLike) {
 
   return (
     <div data-actor={String(actor.id ?? "")} data-callsign={String(actor.callsign ?? "")} data-kind={p.kind}>
-      <div className="section" style={{ borderLeft: `2px solid ${meta.color}`, paddingLeft: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 20, color: meta.color }}>{meta.icon}</span>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {String(title)}
-            </div>
-            <div className="tiny faint mono">
-              {meta.title} · {String(actor.id ?? actor.mmsi ?? actor.norad ?? "")}
-            </div>
-          </div>
-          <span className="live-dot" style={{ marginLeft: "auto" }} title="dato en vivo" />
-        </div>
-
-        <div className="btn-row" style={{ marginTop: 8, flexWrap: "wrap" }}>
-          <button className={`btn ${p.follow ? "primary" : ""}`} onClick={p.onToggleFollow}>
-            {p.follow ? "◉ Siguiendo" : "◎ Seguir"}
+      <PanelHeader
+        icon={meta.icon}
+        eyebrow={meta.title}
+        title={String(title)}
+        subtitle={identity || undefined}
+        tone={meta.color}
+        meta={
+          <>
+            <span>{String(actor.id ?? actor.mmsi ?? actor.norad ?? "")}</span>
+            {actor.source ? <span>fuente: {String(actor.source)}</span> : null}
+            <span className="live-dot" title="dato en vivo" />
+          </>
+        }
+        actions={
+          <button className="btn ghost" onClick={p.onClear} aria-label="Cerrar la ficha">
+            <Icon name="close" size={15} />
           </button>
-          <button className="btn" onClick={p.onRecenter}>⊕ Centrar</button>
-          <button className="btn" onClick={copy}>{copied ? "✓ copiado" : "⧉ JSON"}</button>
-          <button className="btn" onClick={p.onClear}>✕</button>
+        }
+      />
+
+      <SummaryStrip items={metrics} />
+
+      <div className="pn-tools">
+        <div className="btn-row" style={{ flexWrap: "wrap" }}>
+          <button className={`btn ${p.follow ? "primary" : ""}`} onClick={p.onToggleFollow}>
+            <Icon name="follow" size={15} /> {p.follow ? "Siguiendo" : "Seguir"}
+          </button>
+          <button className="btn" onClick={p.onRecenter}><Icon name="locate" size={15} /> Centrar</button>
+          <button className="btn" onClick={copy}><Icon name={copied ? "check" : "copy"} size={15} /> {copied ? "Copiado" : "JSON"}</button>
         </div>
       </div>
 
       {/* ------------------------------------------------- fotografía real */}
       <PhotoSection kind={p.kind} id={String(actor.id ?? "")} />
 
-      {/* ------------------------------------------------------- tren (Renfe) */}
+      {/* ---------------------------------------------------------- tren vivo */}
       {p.kind === "trains" && (
-        <div className="section">
-          <div className="section-title">
-            <span>Tren en circulación</span>
-            <span className="st-count">GTFS-Realtime</span>
-          </div>
+        <PanelSection
+          title="Servicio y próxima parada"
+          count={d?.itinerary?.stops?.length ? `${d.itinerary.stops.length} paradas` : "GTFS-RT"}
+          hint="Operador, estado y avisos"
+        >
           <dl className="kv">
             <dt>Línea</dt>
             <dd>{actor.line_label || actor.line || "—"}</dd>
             <dt>Destino</dt>
             <dd>{actor.destination || d?.itinerary?.destination || "—"}</dd>
             <dt>Núcleo / red</dt>
-            <dd>{actor.nucleo || actor.network || "—"}</dd>
+            <dd>{actor.nucleo || NETWORK_ES[String(actor.network)] || actor.network || "—"}</dd>
             <dt>Operador</dt>
-            <dd>{actor.operator || "Renfe"}</dd>
+            <dd>{actor.operator || "—"}</dd>
             <dt>Estado</dt>
             <dd>{actor.status || "—"}</dd>
             <dt>Velocidad</dt>
@@ -391,7 +475,7 @@ export default function ActorCard(p: ActorLike) {
           </dl>
           {d?.itinerary?.alert ? (
             <div className="cov-note" style={{ borderColor: "rgba(255,180,84,0.35)" }}>
-              <b>Aviso de Renfe:</b> {String(d.itinerary.alert).slice(0, 320)}
+              <b>Aviso del operador:</b> {String(d.itinerary.alert).slice(0, 320)}
             </div>
           ) : null}
           {(d?.itinerary?.stops?.length ?? 0) > 0 && (
@@ -416,26 +500,27 @@ export default function ActorCard(p: ActorLike) {
             </>
           )}
           <div className="tiny faint" style={{ marginTop: 6 }}>
-            Fuente: Renfe, datos abiertos GTFS-Realtime + GTFS estático (CC-BY 4.0). Ouigo e Iryo,
-            los otros dos operadores de alta velocidad, no publican la posición de sus trenes.
+            Fuente: {actor.source || "el operador"} · {actor.operator || "datos abiertos"}.
+            {actor.network !== "amtrak"
+              ? " Ouigo e Iryo, los otros operadores de alta velocidad en España, no publican la posición de sus trenes."
+              : ""}
           </div>
-        </div>
+        </PanelSection>
       )}
 
       {/* ------------------------------------------------ origen / destino */}
       {(p.kind === "aircraft" || p.kind === "vessels") && (
-        <div className="section">
-          <div className="section-title">
-            <span>{p.kind === "aircraft" ? "Recorrido del vuelo" : "Recorrido del buque"}</span>
-            <span className="st-count">{p.kind === "aircraft" ? "origen → destino" : "destino declarado"}</span>
-          </div>
+        <PanelSection
+          title={p.kind === "aircraft" ? "Recorrido del vuelo" : "Recorrido del buque"}
+          count={p.kind === "aircraft" ? "origen → destino" : "destino declarado"}
+          defaultOpen
+        >
           {p.kind === "aircraft" ? <RouteBlock d={d} /> : <PortBlock d={d} actor={actor} />}
-        </div>
+        </PanelSection>
       )}
 
       {p.kind === "air" && (
-        <div className="section">
-          <div className="section-title">Calidad del aire medida</div>
+        <PanelSection title="Calidad del aire medida" count={actor.level || undefined} defaultOpen={false}>
           <dl className="kv">
             <dt>PM2.5</dt>
             <dd>{actor.pm25 ?? "—"} µg/m³</dd>
@@ -453,12 +538,15 @@ export default function ActorCard(p: ActorLike) {
           <div className="tiny faint" style={{ marginTop: 6 }}>
             Sensor ciudadano de Sensor.Community (hardware SDS011/ PMS). Lectura pública, sin clave.
           </div>
-        </div>
+        </PanelSection>
       )}
 
       {/* ------------------------------------------------------------ estela */}
-      <div className="section">
-        <div className="section-title">Trayectoria registrada</div>
+      <PanelSection
+        title="Trayectoria registrada"
+        count={actor.samples ?? history.length}
+        hint="Muestras, distancia y series"
+      >
         <div className="kv-grid">
           <div><span>Muestras</span><b className="mono">{fmt(actor.samples ?? history.length)}</b></div>
           <div><span>Ventana</span><b className="mono">{fmt(actor.track_minutes)} min</b></div>
@@ -475,22 +563,20 @@ export default function ActorCard(p: ActorLike) {
             <Spark series={spdSeries} color="#ffd166" unit="kt" label="Velocidad" />
           </>
         )}
-      </div>
+      </PanelSection>
 
       {/* --------------------------------------------------------- orbital */}
       {orbit && (
-        <div className="section">
-          <div className="section-title">Elementos orbitales (SGP4)</div>
+        <PanelSection title="Elementos orbitales (SGP4)" count="órbita" hint="Parámetros propagados">
           <div className="kv-grid">
             {Object.entries(orbit).map(([k, v]) => (
               <div key={k}><span>{label(k)}</span><b className="mono">{fmt(v)}</b></div>
             ))}
           </div>
-        </div>
+        </PanelSection>
       )}
       {state && (
-        <div className="section">
-          <div className="section-title">Estado instantáneo</div>
+        <PanelSection title="Estado instantáneo" hint="Cálculo para este instante">
           <div className="kv-grid">
             {Object.entries(state).map(([k, v]) => (
               <div key={k}><span>{label(k)}</span><b className="mono">{fmt(v)}</b></div>
@@ -501,13 +587,16 @@ export default function ActorCard(p: ActorLike) {
             {d?.epoch && <div><span>Época</span><b className="mono">{fmt(d.epoch)}</b></div>}
             {d?.groups && <div><span>Grupos</span><b className="mono">{fmt(d.groups)}</b></div>}
           </div>
-        </div>
+        </PanelSection>
       )}
 
       {/* -------------------------------------------------- todos los campos */}
-      <div className="section">
-        <div className="section-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span>Todos los campos ({entries.length})</span>
+      <PanelSection
+        title="Todos los campos"
+        count={entries.length}
+        hint="Datos en bruto del elemento"
+      >
+        <div className="btn-row" style={{ justifyContent: "flex-end", marginBottom: 6 }}>
           <button className="btn ghost tiny" onClick={() => setRaw((v) => !v)}>{raw ? "vista tabla" : "JSON"}</button>
         </div>
         {raw ? (
@@ -524,16 +613,15 @@ export default function ActorCard(p: ActorLike) {
             ))}
           </div>
         )}
-      </div>
+      </PanelSection>
 
       {/* --------------------------------------------------------------- TLE */}
       {d?.tle && (
-        <div className="section">
-          <div className="section-title">TLE en uso</div>
+        <PanelSection title="TLE en uso" hint="Elementos orbitales originales">
           <pre className="code-block mono" style={{ fontSize: 10.5, overflowX: "auto" }}>
             {Array.isArray(d.tle) ? d.tle.join("\n") : String(d.tle)}
           </pre>
-        </div>
+        </PanelSection>
       )}
     </div>
   );

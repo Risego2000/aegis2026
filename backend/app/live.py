@@ -228,6 +228,6 @@ AIRCRAFT = LiveLayer("aircraft", ttl_s=120)
 # sensores de calidad del aire: estáticos, sin histórico de trayectoria
 AIR = LiveLayer("air", ttl_s=7200)
 VESSELS = LiveLayer("vessels", ttl_s=1800)
-# Trenes (Renfe): 20 s de refresco, TTL corto para que no queden trenes fantasma
+# Trenes (Renfe, FGC y Amtrak): TTL corto para que no queden trenes fantasma
 TRAINS = LiveLayer("trains", ttl_s=120)
 SATCAT = SatelliteLayer()

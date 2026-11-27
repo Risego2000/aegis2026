@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      api_url:
+        description: "URL pública del backend (vacío = variable AEGIS_API)"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -24,19 +29,62 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Instalar y compilar el cliente
+
+      - name: Instalar dependencias
+        working-directory: frontend
+        run: npm ci
+
+      # Pages solo sirve ficheros: la URL debe quedar escrita en el artefacto,
+      # no basta con una variable de compilación que se pueda quedar vacía.
+      - name: Fijar la API pública en runtime-config.json
         working-directory: frontend
         env:
-          NEXT_PUBLIC_AEGIS_API: ${{ vars.AEGIS_API }}
+          AEGIS_API: ${{ github.event.inputs.api_url || vars.AEGIS_API }}
+        run: node scripts/write-runtime-config.mjs
+
+      - name: Comprobar la API antes de publicar
+        working-directory: frontend
+        run: |
+          set -euo pipefail
+          API=$(node -p "require('./public/runtime-config.json').api")
+          echo "API configurada: $API"
+          code=""
+          for attempt in $(seq 1 12); do
+            code=$(curl -sSL -o /tmp/aegis-health.json -m 20 -w '%{http_code}' "${API}/api/health" || true)
+            if [ "$code" = "200" ] && grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"' /tmp/aegis-health.json; then
+              echo "La API responde en ${API}/api/health"
+              exit 0
+            fi
+            echo "Intento ${attempt}/12: HTTP ${code:-sin respuesta}; espero 5 s"
+            sleep 5
+          done
+          echo "::error::La API ${API} no responde en /api/health (HTTP ${code:-sin respuesta}). No se publica un mapa sin datos: corrige la variable AEGIS_API o relanza AEGIS · Pages con el input api_url."
+          exit 1
+
+      - name: Compilar el cliente
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_AEGIS_API: ${{ github.event.inputs.api_url || vars.AEGIS_API }}
           # GitHub Pages publica en https://<usuario>.github.io/<repo>/
           NEXT_BASE_PATH: /aegis2026
+        run: npm run build
+
+      - name: Verificar el runtime-config del artefacto
+        working-directory: frontend
         run: |
-          npm ci
-          npm run build
+          set -euo pipefail
+          API=$(node -p "require('./out/runtime-config.json').api")
+          if [ -z "$API" ]; then
+            echo "::error::out/runtime-config.json se quedó sin api; no se publica."
+            exit 1
+          fi
+          echo "El artefacto apunta a $API"
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: frontend/out
+
   deploy:
     needs: build
     runs-on: ubuntu-latest

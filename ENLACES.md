@@ -1,10 +1,11 @@
 # Enlaces públicos de AEGIS
 
-> **Estado comprobado el 27 de noviembre de 2026, 06:40 UTC: no hay backend
+> **Estado comprobado el 27 de noviembre de 2026, 10:15 UTC: no hay backend
 > público.** Los dos túneles están caídos, así que el mapa de GitHub Pages
 > (`https://risego2000.github.io/aegis2026/`) carga la interfaz y muestra el
-> aviso de que la API no responde. Mientras se levanta otro backend no hay nada
-> que arreglar en el cliente: el sitio está bien publicado, le falta el motor.
+> aviso de que la API no responde. El workflow ya escribe `AEGIS_API` en
+> `runtime-config.json` y se niega a publicar si `/api/health` no responde; lo
+> único que falta es un motor público vivo al que apuntar.
 
 | Vía | Enlace | Estado |
 |---|---|---|
@@ -16,16 +17,17 @@
 
 1. Levanta el backend donde toque (`bash scripts/dev.sh` o `make backend` +
    `make build`, o un túnel nuevo con `bash scripts/tunnel.sh`).
-2. Repunta el mapa publicado **sin recompilar**, con una de estas dos vías:
-   - inmediata, solo para tu navegador:
-     `https://risego2000.github.io/aegis2026/?api=https://tu-backend`
-   - permanente, para todo el mundo: pon esa URL en
-     `frontend/public/runtime-config.json` (`{ "api": "https://tu-backend" }`) y
-     publica el sitio.
-3. Comprueba que responde con `BASE=https://tu-backend python3 scripts/smoke.py`.
-   El workflow **AEGIS · salud de lo publicado** hace esa misma comprobación
-   cada 30 minutos contra la URL de `vars.AEGIS_API`, así que la próxima caída
-   se ve en Actions en vez de descubrirse por casualidad.
+2. Publica esa URL para todo el mundo: ponla en
+   *Settings → Secrets and variables → Actions → Variables → `AEGIS_API`* y
+   lanza **AEGIS · Pages**. El workflow la escribe en `runtime-config.json`,
+   comprueba `/api/health` y aborta si no responde. Para una publicación
+   puntual, usa **Run workflow → `api_url`** sin cambiar la variable.
+3. Si solo quieres probar en tu navegador sin desplegar, abre
+   `https://risego2000.github.io/aegis2026/?api=https://tu-backend`.
+4. Comprueba que responde con `BASE=https://tu-backend python3 scripts/smoke.py`.
+   El workflow **AEGIS · salud de lo publicado** lee el `runtime-config.json`
+   publicado y prueba la API real del sitio cada 30 minutos, así que una URL
+   vacía o muerta se ve en Actions en vez de descubrirse por casualidad.
 
 ### Revisión de punta a punta (27 nov, 04:20 UTC)
 - **Trenes animados**: avanzan por la vía entre refrescos (20 s de deriva, la

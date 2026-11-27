@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiUrl } from "@/lib/api";
 import { markdownToHtml, timeAgo } from "@/lib/format";
+import { Icon } from "@/components/Icon";
+import { PanelHeader, PanelSection, SummaryStrip } from "@/components/PanelUI";
 
 /**
  * Panel de analista: lo que convierte el visor en herramienta de investigación.
@@ -105,6 +107,51 @@ export default function AnalystPanel({ selectedEventId, selectedTitle }: Props) 
 
   const currentCase = useMemo(() => cases.find((c) => c.id === caseId), [cases, caseId]);
 
+  const activeSection = SECTIONS.find((s) => s.key === section);
+  const caseEvidence = cases.reduce((sum, c) => sum + (c.items ?? 0), 0);
+  const summaryItems = (() => {
+    if (section === "patterns") {
+      return [
+        { label: "GNSS", value: gnss?.status ?? "—", hint: "Estado de la calidad GNSS" },
+        { label: "Celdas", value: gnss?.cells?.length ?? 0, hint: "Celdas de 1° con degradación" },
+        { label: "Anomalías", value: anomalies?.count ?? 0, hint: "Anomalías marítimas detectadas" },
+        { label: "Ventana", value: `${hours} h`, hint: "Periodo analizado" },
+      ];
+    }
+    if (section === "cases") {
+      return [
+        { label: "Casos", value: cases.length, hint: "Expedientes abiertos" },
+        { label: "Evidencias", value: caseEvidence, hint: "Elementos encadenados" },
+        { label: "Verificado", value: verify ? (verify.ok ? "íntegro" : "alterado") : "—", hint: "Comprobación de la cadena SHA-256" },
+      ];
+    }
+    if (section === "graph") {
+      return [
+        { label: "Nodos", value: graph?.counts?.nodes ?? "—", hint: "Entidades del grafo" },
+        { label: "Aristas", value: graph?.counts?.edges ?? "—", hint: "Vínculos entre entidades" },
+        { label: "Ventana", value: `${hours} h`, hint: "Periodo analizado" },
+        { label: "Máximo", value: "150", hint: "Sucesos incluidos" },
+      ];
+    }
+    if (section === "playback") {
+      return [
+        { label: "Instante", value: `−${offsetMin} min`, hint: "Desplazamiento temporal" },
+        { label: "Posiciones", value: playback?.count ?? "—", hint: "Elementos en ese instante" },
+        { label: "Aeronaves", value: playback?.by_kind?.aircraft ?? "—", hint: "Aeronaves muestreadas" },
+        { label: "Buques", value: playback?.by_kind?.vessels ?? "—", hint: "Buques muestreados" },
+      ];
+    }
+    if (section === "sources") {
+      return [
+        { label: "Ingestas", value: sources?.window_runs ?? "—", hint: "Ejecuciones en la ventana" },
+        { label: "Fuentes", value: sources?.sources?.length ?? "—", hint: "Fuentes evaluadas" },
+        { label: "Método", value: "éxito", hint: "Tasa de acierto por fuente" },
+        { label: "Ventana", value: "actual", hint: "Datos en vivo" },
+      ];
+    }
+    return [];
+  })();
+
   async function createCase() {
     if (!caseTitle.trim()) return;
     await fetch(apiUrl("/api/cases"), {
@@ -139,12 +186,21 @@ export default function AnalystPanel({ selectedEventId, selectedTitle }: Props) 
 
   return (
     <div>
-      <div className="section" style={{ paddingBottom: 8 }}>
-        <div className="section-title">
-          <span>Panel de analista</span>
-          <span className="st-count">{busy ? "cargando…" : "datos en vivo"}</span>
-        </div>
-        <div className="chips" style={{ marginTop: 6 }}>
+      <PanelHeader
+        icon="analyst"
+        eyebrow="Mesa de análisis"
+        title="Analista"
+        subtitle="SITREP, patrones, casos con cadena de custodia, grafo y reproducción histórica."
+        meta={
+          <>
+            <span>{busy ? "cargando…" : "datos en vivo"}</span>
+            {selectedTitle ? <span>suceso: {selectedTitle}</span> : null}
+          </>
+        }
+      />
+
+      <div className="pn-tools">
+        <div className="chips">
           {SECTIONS.map((s) => (
             <button
               key={s.key}
@@ -157,7 +213,7 @@ export default function AnalystPanel({ selectedEventId, selectedTitle }: Props) 
           ))}
         </div>
         {(section === "sitrep" || section === "graph") && (
-          <div className="chips" style={{ marginTop: 6 }}>
+          <div className="chips">
             {[6, 24, 72, 168].map((h) => (
               <button key={h} className={`chip ${hours === h ? "active" : ""}`} onClick={() => setHours(h)}>
                 {h} h
@@ -166,6 +222,12 @@ export default function AnalystPanel({ selectedEventId, selectedTitle }: Props) 
           </div>
         )}
       </div>
+
+      <div className="pn-lede">
+        <b style={{ color: "var(--text)" }}>{activeSection?.label}.</b> {activeSection?.hint}.
+      </div>
+
+      {summaryItems.length > 0 && <SummaryStrip items={summaryItems} />}
 
       {error && (
         <div className="section">
@@ -180,16 +242,16 @@ export default function AnalystPanel({ selectedEventId, selectedTitle }: Props) 
       {section === "sitrep" && (
         <div className="section">
           <div className="btn-row" style={{ marginBottom: 8 }}>
-            <button className="btn" onClick={() => void load()} disabled={busy}>↻ Actualizar</button>
+            <button className="btn" onClick={() => void load()} disabled={busy}><Icon name="refresh" size={15} /> Actualizar</button>
             <button className="btn" onClick={() => download(`sitrep-${hours}h.md`, sitrep)} disabled={!sitrep}>
-              ↓ .md
+              <Icon name="download" size={15} /> .md
             </button>
           </div>
           {sitrep ? (
             <div className="briefing" dangerouslySetInnerHTML={{ __html: markdownToHtml(sitrep) }} />
           ) : (
             <div className="empty">
-              <span className="empty-ico" aria-hidden="true">▤</span>
+              <span className="empty-ico" aria-hidden="true"><Icon name="report" size={30} /></span>
               <strong>Sin SITREP todavía</strong>
               El informe se compone de los sucesos ya guardados en la ventana elegida.
             </div>
@@ -246,25 +308,6 @@ export default function AnalystPanel({ selectedEventId, selectedTitle }: Props) 
       {section === "cases" && (
         <>
           <div className="section">
-            <div className="section-title">Nuevo caso</div>
-            <div style={{ display: "flex", gap: 6 }}>
-              <input
-                value={caseTitle}
-                onChange={(e) => setCaseTitle(e.target.value)}
-                placeholder="Título del caso"
-                style={{ flex: 1, minWidth: 0 }}
-              />
-              <button className="btn primary" onClick={() => void createCase()} disabled={!caseTitle.trim()}>
-                Crear
-              </button>
-            </div>
-            <div className="tiny faint" style={{ marginTop: 6 }}>
-              Cada evidencia se encadena con SHA-256 sobre la anterior: si alguien edita el archivo,
-              la verificación deja de cuadrar.
-            </div>
-          </div>
-
-          <div className="section">
             <div className="section-title">
               <span>Casos</span>
               <span className="st-count">{cases.length}</span>
@@ -301,7 +344,7 @@ export default function AnalystPanel({ selectedEventId, selectedTitle }: Props) 
                   target="_blank"
                   rel="noreferrer"
                 >
-                  ↓ Informe
+                  <Icon name="download" size={15} /> Informe
                 </a>
               </div>
               {!selectedEventId && (
@@ -316,6 +359,24 @@ export default function AnalystPanel({ selectedEventId, selectedTitle }: Props) 
               )}
             </div>
           )}
+
+          <PanelSection title="Nuevo caso" hint="Crear un expediente con cadena de custodia">
+            <div style={{ display: "flex", gap: 6 }}>
+              <input
+                value={caseTitle}
+                onChange={(e) => setCaseTitle(e.target.value)}
+                placeholder="Título del caso"
+                style={{ flex: 1, minWidth: 0 }}
+              />
+              <button className="btn primary" onClick={() => void createCase()} disabled={!caseTitle.trim()}>
+                Crear
+              </button>
+            </div>
+            <div className="tiny faint" style={{ marginTop: 6 }}>
+              Cada evidencia se encadena con SHA-256 sobre la anterior: si alguien edita el archivo,
+              la verificación deja de cuadrar.
+            </div>
+          </PanelSection>
         </>
       )}
 
@@ -330,7 +391,7 @@ export default function AnalystPanel({ selectedEventId, selectedTitle }: Props) 
           </div>
           <div className="btn-row" style={{ marginBottom: 8 }}>
             <a className="btn" href={apiUrl(`/api/graph/export?fmt=graphml&hours=${hours}`)} target="_blank" rel="noreferrer">
-              ↓ GraphML
+              <Icon name="download" size={15} /> GraphML
             </a>
             <span className="tiny faint" style={{ alignSelf: "center" }}>
               Se abre en yEd, Gephi, i2 o Maltego.

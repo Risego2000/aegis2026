@@ -812,6 +812,8 @@ async def media_photo(request: Request, kind: str, id: str) -> dict[str, Any]:
         # modelo que circula, nunca una imagen inventada.
         if net == "amtrak":
             query = f"Amtrak {line} train".strip()
+        elif net == "fgc":
+            query = "Ferrocarrils de la Generalitat de Catalunya train"
         elif "ave" in line.lower() or "avlo" in line.lower():
             query = "Renfe AVE Serie 103 train"
         elif "alvia" in line.lower():
@@ -971,7 +973,7 @@ async def api_stream_stats() -> dict[str, Any]:
 
 @router.get("/api/live/trains")
 async def live_trains(bbox: str | None = None, limit: int = Query(20000, le=40000)) -> dict[str, Any]:
-    """Trenes de Renfe en vivo (GTFS-RT). Vacío cuando no hay servicio."""
+    """Trenes en vivo de Renfe, FGC y Amtrak (GTFS-RT). Vacío sin servicio."""
     data = TRAINS.geojson(_parse_bbox(bbox), limit)
     data["stats"] = TRAINS.stats()
     return data
@@ -1372,7 +1374,7 @@ def kind_label(kind: str, item: dict[str, Any]) -> str:
 
 @router.get("/api/tiles/catalogue")
 async def tiles_catalogue() -> dict:
-    """Estilos de fondo de mapa disponibles (calles, oscuro, claro, satélite)."""
+    """Fondos de mapa disponibles (detalle, imagen, relieve, marítimo, calles…)."""
     return tiles_mod.catalogue()
 
 

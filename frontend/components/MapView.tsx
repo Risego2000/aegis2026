@@ -9,14 +9,16 @@ import { eventFeatureToItem, type BreakdownItem } from "@/components/Breakdown";
 import type { ActorKind, EventFeature, FeatureCollection, LiveCollection } from "@/lib/types";
 import { categoryMeta } from "@/lib/format";
 import { apiUrl } from "@/lib/api";
+import { locateMe } from "@/lib/geo";
 import { categoryIconData } from "@/lib/mapIcons";
+import { Icon, type IconName } from "@/components/Icon";
 
 type Props = {
   events: FeatureCollection | null;
   aircraft: LiveCollection | null;
   vessels: LiveCollection | null;
   satellites: LiveCollection | null;
-  basemap?: string;              // "vectorial" | calles | oscuro | claro | satelite
+  basemap?: string;              // operativo | detalle | imagen | relieve | maritimo | calles | claro
   cameras?: LiveCollection | null;
   trains?: LiveCollection | null;
   air?: LiveCollection | null;
@@ -76,130 +78,25 @@ function makeCanvas(size: number, draw: (ctx: CanvasRenderingContext2D) => void)
   return ctx.getImageData(0, 0, size, size);
 }
 
-function planeIcon(size = 40) {
-  return makeCanvas(size, (ctx) => {
-    const s = size / 40;
-    ctx.scale(s, s);
-    ctx.fillStyle = "#ffffff";
-    ctx.beginPath();
-    ctx.moveTo(20, 3);
-    ctx.lineTo(23.4, 17);
-    ctx.lineTo(36, 27);
-    ctx.lineTo(36, 31);
-    ctx.lineTo(23, 26.5);
-    ctx.lineTo(22, 34);
-    ctx.lineTo(27, 37.5);
-    ctx.lineTo(27, 39);
-    ctx.lineTo(20, 37);
-    ctx.lineTo(13, 39);
-    ctx.lineTo(13, 37.5);
-    ctx.lineTo(18, 34);
-    ctx.lineTo(17, 26.5);
-    ctx.lineTo(4, 31);
-    ctx.lineTo(4, 27);
-    ctx.lineTo(16.6, 17);
-    ctx.closePath();
-    ctx.fill();
-  });
-}
-
-function shipIcon(size = 32) {
-  return makeCanvas(size, (ctx) => {
-    const s = size / 32;
-    ctx.scale(s, s);
-    ctx.fillStyle = "#ffffff";
-    ctx.beginPath();
-    ctx.moveTo(16, 3);
-    ctx.lineTo(24, 13);
-    ctx.lineTo(21, 27);
-    ctx.lineTo(11, 27);
-    ctx.lineTo(8, 13);
-    ctx.closePath();
-    ctx.fill();
-  });
-}
-
-/** Tren visto desde arriba: morro redondeado, ventanas y bogies. */
-function trainIcon(size = 34) {
-  return makeCanvas(size, (ctx) => {
-    const s = size / 34;
-    ctx.scale(s, s);
-    ctx.fillStyle = "#ffffff";
-    // cuerpo
-    ctx.beginPath();
-    ctx.moveTo(17, 2);
-    ctx.quadraticCurveTo(26, 2, 26, 11);
-    ctx.lineTo(26, 26);
-    ctx.quadraticCurveTo(26, 32, 17, 32);
-    ctx.quadraticCurveTo(8, 32, 8, 26);
-    ctx.lineTo(8, 11);
-    ctx.quadraticCurveTo(8, 2, 17, 2);
-    ctx.fill();
-    // franja central (se recorta en modo SDF con icon-color)
-    ctx.globalCompositeOperation = "destination-out";
-    ctx.fillRect(13, 7, 8, 2.6);
-    ctx.fillRect(13, 12, 8, 2.6);
-    ctx.fillRect(13, 17, 8, 2.6);
-    ctx.beginPath();
-    ctx.moveTo(11, 24); ctx.lineTo(23, 24);
-    ctx.lineTo(23, 26.6); ctx.lineTo(11, 26.6);
-    ctx.closePath();
-    ctx.fill();
-    ctx.globalCompositeOperation = "source-over";
-  });
-}
-
-function satIcon(size = 28) {
-  return makeCanvas(size, (ctx) => {
-    const c = size / 2;
-    ctx.fillStyle = "#ffffff";
-    ctx.beginPath();
-    ctx.moveTo(c, 2);
-    ctx.lineTo(size - 3, c);
-    ctx.lineTo(c, size - 2);
-    ctx.lineTo(3, c);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillRect(c - 1.5, 2, 3, size - 4);
-  });
-}
-
-function cameraIcon(size = 28) {
-  return makeCanvas(size, (ctx) => {
-    const s = size;
-    // cuerpo de la cámara + objetivo
-    ctx.fillStyle = "#ffffff";
-    ctx.beginPath();
-    ctx.roundRect(s * 0.16, s * 0.3, s * 0.5, s * 0.34, s * 0.08);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(s * 0.66, s * 0.36);
-    ctx.lineTo(s * 0.86, s * 0.26);
-    ctx.lineTo(s * 0.86, s * 0.68);
-    ctx.lineTo(s * 0.66, s * 0.58);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillRect(s * 0.28, s * 0.16, s * 0.1, s * 0.14);
-  });
-}
-
 function clusterIcon(count: number, color: string, size = 54) {
   const label = count >= 1000 ? `${(count / 1000).toFixed(1)}k` : String(count);
   const scale = 2;
   return makeCanvas(size * scale, (ctx) => {
     const c = (size * scale) / 2;
     const radius = c - 3 * scale;
-    const grad = ctx.createRadialGradient(c, c, radius * 0.2, c, c, radius);
-    grad.addColorStop(0, color + "ee");
-    grad.addColorStop(1, color + "44");
-    ctx.fillStyle = grad;
+    ctx.fillStyle = "rgba(11, 18, 26, 0.94)";
     ctx.beginPath();
     ctx.arc(c, c, radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = color;
-    ctx.lineWidth = 1.6 * scale;
+    ctx.lineWidth = 1.5 * scale;
     ctx.stroke();
-    ctx.fillStyle = "#02181a";
+    ctx.beginPath();
+    ctx.arc(c, c, radius - 4 * scale, 0, Math.PI * 2);
+    ctx.strokeStyle = color + "55";
+    ctx.lineWidth = 0.75 * scale;
+    ctx.stroke();
+    ctx.fillStyle = "#e7eef7";
     ctx.font = `700 ${Math.round(13 * scale)}px SFMono-Regular, Menlo, monospace`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -220,6 +117,12 @@ const CAT_COLORS: Record<string, string> = {
   traffic: "#fb923c",
   transport: "#a3e635",
   news: "#90a4ae",
+  health: "#69f0ae",
+  weather: "#4fc3f7",
+  flood: "#4dd0e1",
+  volcano: "#ff8a65",
+  cyber: "#ce93d8",
+  network: "#7c9cff",
 };
 
 /* --------------------------------------------------------------- geometry */
@@ -334,6 +237,51 @@ const BASE_STYLE: any = {
   ],
 };
 
+/* --------------------------------------------------------------- fondos */
+/** Teselas de cada fondo: extensión y zoom máximo real del catálogo del
+    backend (`backend/app/tiles.py`). Por encima, MapLibre reescala la última
+    tesela buena en vez de pedir vacías. */
+const BASEMAP_RASTERS: Record<string, { ext: string; maxzoom: number; opacity?: number; paint?: Record<string, any> }> = {
+  // el gris de Esri viene alto de brillo para una consola oscura: se rebaja
+  detalle: { ext: "jpg", maxzoom: 16, paint: { "raster-brightness-max": 0.85, "raster-saturation": -0.15 } },
+  imagen: { ext: "jpg", maxzoom: 19 },
+  relieve: {
+    ext: "jpg", maxzoom: 16,
+    // el sombreado nativo es casi blanco: se rebaja y desatura para que lo más
+    // brillante del mapa sea el dato, no el terreno
+    paint: { "raster-brightness-max": 0.34, "raster-contrast": 0.12, "raster-saturation": -0.6 },
+  },
+  maritimo: {
+    ext: "jpg", maxzoom: 10,
+    // azul de carta, no el celeste del proveedor: los iconos claros (aviones,
+    // buques) necesitan fondo medio para leerse
+    paint: { "raster-saturation": -0.3, "raster-brightness-max": 0.72, "raster-contrast": 0.05 },
+  },
+  calles: { ext: "jpg", maxzoom: 19 },
+  claro: { ext: "jpg", maxzoom: 16 },
+  // transparentes: acompañan a la base que las necesita
+  detalle_ref: { ext: "png", maxzoom: 14, opacity: 0.95 },
+  claro_ref: { ext: "png", maxzoom: 14, opacity: 0.95 },
+  imagen_ref: { ext: "png", maxzoom: 15, opacity: 0.95 },
+  transporte: { ext: "png", maxzoom: 19, opacity: 0.5 },
+};
+
+/** Las bases completas van bajo el relleno vectorial; las transparentes, encima,
+    para que también se lean con el fondo «operativo». */
+const BASE_RASTER_IDS = ["calles", "detalle", "imagen", "relieve", "maritimo", "claro"];
+const OVERLAY_RASTER_IDS = ["detalle_ref", "claro_ref", "imagen_ref", "transporte"];
+
+/** Qué teselas se ven con cada fondo (y qué base es clara, para las líneas). */
+const BASEMAP_SET: Record<string, { bases: string[]; overlays: string[]; light?: boolean }> = {
+  operativo: { bases: [], overlays: ["detalle_ref"] },
+  detalle: { bases: ["detalle"], overlays: ["detalle_ref"] },
+  imagen: { bases: ["imagen"], overlays: ["imagen_ref", "transporte"] },
+  relieve: { bases: ["relieve"], overlays: ["detalle_ref"] },
+  maritimo: { bases: ["maritimo"], overlays: ["claro_ref"], light: true },
+  calles: { bases: ["calles"], overlays: [], light: true },
+  claro: { bases: ["claro"], overlays: ["claro_ref"], light: true },
+};
+
 /* -------------------------------------------------------------------- map */
 /** 
  * `queryRenderedFeatures` devuelve los arrays/objetos de un GeoJSON como texto
@@ -356,7 +304,7 @@ export default function MapView(props: Props) {
     events, aircraft, vessels, satellites, fences, visible, selectedId,
     onSelect, onViewport, onSatelliteSelect, onActorSelect, onBreakFollow, aoiMode, aoiRadiusKm, onCreateAoi, terrain,
     track, selectedActor, follow, onBreakdownCluster,
-    cameras, air, trains, onCameraSelect, selectedCameraId, basemap = "oscuro", onPlaceSelect,
+    cameras, air, trains, onCameraSelect, selectedCameraId, basemap = "operativo", onPlaceSelect,
   } = props;
 
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -440,21 +388,18 @@ export default function MapView(props: Props) {
           '<path d="M12 1.4v3.4M12 19.2v3.4M1.4 12h3.4M19.2 12h3.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>' +
           "</svg>";
         btn.onclick = () => {
-          if (!navigator.geolocation) return;
           btn.classList.add("active");
-          const pintar = (pos: GeolocationPosition) => {
-            const { latitude, longitude } = pos.coords;
-            const src = map.getSource("me") as maplibregl.GeoJSONSource | undefined;
-            src?.setData({
-              type: "FeatureCollection",
-              features: [{ type: "Feature", geometry: { type: "Point", coordinates: [longitude, latitude] }, properties: {} }],
-            } as any);
-            map.easeTo({ center: [longitude, latitude], zoom: Math.max(map.getZoom(), 9), duration: 900 });
-            window.dispatchEvent(new CustomEvent("aegis:me", { detail: { lat: latitude, lon: longitude } }));
-          };
-          navigator.geolocation.getCurrentPosition(pintar, () => btn.classList.remove("active"), {
-            enableHighAccuracy: true, timeout: 12000, maximumAge: 30000,
-          });
+          locateMe(
+            (latitude, longitude) => {
+              const src = map.getSource("me") as maplibregl.GeoJSONSource | undefined;
+              src?.setData({
+                type: "FeatureCollection",
+                features: [{ type: "Feature", geometry: { type: "Point", coordinates: [longitude, latitude] }, properties: {} }],
+              } as any);
+              map.easeTo({ center: [longitude, latitude], zoom: Math.max(map.getZoom(), 9), duration: 900 });
+            },
+            () => btn.classList.remove("active"),
+          );
         };
         const wrap = document.createElement("div");
         wrap.className = "maplibregl-ctrl maplibregl-ctrl-group";
@@ -495,6 +440,21 @@ export default function MapView(props: Props) {
       "bottom-right"
     );
 
+    /* La atribución nace abierta y en móvil se comía la leyenda y las
+       herramientas. Se deja como un botón «i»; al pulsarlo se abre su panel. */
+    const compactAttribution = () => {
+      if (!window.matchMedia("(max-width: 760px)").matches) return;
+      const el = map
+        .getContainer()
+        .querySelector<HTMLDetailsElement>(".maplibregl-ctrl-attrib");
+      el?.removeAttribute("open");
+      el?.classList.remove("maplibregl-compact-show");
+    };
+    compactAttribution();
+    window.setTimeout(compactAttribution, 0);
+    map.on("load", compactAttribution);
+    map.on("resize", compactAttribution);
+
     map.on("load", () => {
       // --- icons ---
       // Iconos característicos: cada capa y cada categoría de suceso tiene el
@@ -502,10 +462,11 @@ export default function MapView(props: Props) {
       const ICON_NAMES = [
         "plane", "milPlane", "statePlane", "heli", "drone", "ship", "sat", "cam",
         "train", "metro", "earthquake", "cyclone", "fire", "conflict", "protest",
-        "military", "diplomacy", "economy", "news", "traffic", "train", "generic", "pin",
+        "military", "diplomacy", "economy", "news", "traffic", "health", "weather",
+        "flood", "volcano", "cyber", "network", "generic", "pin",
       ];
       for (const name of new Set(ICON_NAMES)) {
-        if (!map.hasImage(name)) map.addImage(name, categoryIconData(name === "train" ? "train" : name), { sdf: true });
+        if (!map.hasImage(name)) map.addImage(name, categoryIconData(name), { sdf: true, pixelRatio: 2 });
       }
       for (const [n, color] of [[2, "#35e0d0"], [10, "#35e0d0"], [50, "#ffd166"], [200, "#ff9f0a"], [1000, "#ff3d71"]] as [number, string][]) {
         map.addImage(`cluster-${n}`, clusterIcon(n, color), { pixelRatio: 2 });
@@ -541,40 +502,22 @@ export default function MapView(props: Props) {
       map.addSource("sealanes", { type: "geojson", data: EMPTY_FC });
       map.addSource("train-motion", { type: "geojson", data: EMPTY_FC });
 
-      // --- fondo de mapa detallado (teselas servidas por el backend) ---
-      // Se añaden antes que nada para que queden por debajo del resto de capas.
-      // formato y zoom máximo de cada proveedor (los grises de Esri llegan a 16)
-      const BASEMAPS: Record<string, { ext: string; maxzoom: number }> = {
-        calles: { ext: "png", maxzoom: 19 },
-        oscuro: { ext: "jpg", maxzoom: 16 },
-        claro: { ext: "jpg", maxzoom: 16 },
-        satelite: { ext: "jpg", maxzoom: 19 },
-        // capas transparentes: solo nombres de calle y de lugar, encima de la base
-        oscuro_ref: { ext: "png", maxzoom: 16 },
-        claro_ref: { ext: "png", maxzoom: 16 },
-        // red de carreteras y ferrocarril (transparente, va sobre cualquier fondo)
-        transporte: { ext: "png", maxzoom: 19 },
-        // derrotas marítimas con escala (transparente)
-        oceanoref: { ext: "png", maxzoom: 13 },
-      };
-      // Ojo: hay una capa `bg` (background) al principio del estilo. Las teselas
-      // deben ir JUSTO ENCIMA de ella; si se insertan antes, el fondo la tapa y
-      // el mapa se ve negro aunque las teselas se hayan descargado.
+      // --- fondos de mapa (teselas servidas por el backend) ---
+      // Ojo: hay una capa `bg` (background) al principio del estilo. Las bases
+      // deben ir JUSTO ENCIMA de ella; si se insertan antes, el fondo las tapa
+      // y el mapa se ve negro aunque las teselas se hayan descargado.
       const underLand = map.getLayer("land-fill") ? "land-fill" : undefined;
-      // las etiquetas van justo debajo de los datos pero por encima de su base
-      const labelAnchor = map.getLayer("land-fill") ? "land-fill" : undefined;
-      // ojo: el orden importa — cada una se apila encima de la anterior; la red
-      // de transporte y las derrotas marítimas quedan por ENCIMA de todas
-      const ORDER = ["calles", "oscuro", "claro", "satelite", "oscuro_ref", "claro_ref", "oceanoref", "transporte"];
-      for (const id of ORDER) {
-        const spec = BASEMAPS[id];
-        if (!spec) continue;
+      // las transparentes van sobre el relleno vectorial (y bajo los datos)
+      const overLand = map.getLayer("places") ? "places" : undefined;
+      const addRaster = (id: string, before?: string) => {
+        const spec = BASEMAP_RASTERS[id];
+        if (!spec) return;
         map.addSource(`base-${id}`, {
           type: "raster",
           tiles: [`/api/tiles/${id}/{z}/{x}/{y}.${spec.ext}`],
           tileSize: 256,
           maxzoom: spec.maxzoom,
-          attribution: "© colaboradores de OpenStreetMap · Esri",
+          attribution: "Esri · HERE · OpenStreetMap · Maxar · GEBCO",
         });
         map.addLayer(
           {
@@ -583,13 +526,16 @@ export default function MapView(props: Props) {
             source: `base-${id}`,
             layout: { visibility: "none" },
             paint: {
-              "raster-opacity": id.endsWith("_ref") ? 0.95 : 1,
+              "raster-opacity": spec.opacity ?? 1,
               "raster-fade-duration": 200,
+              ...(spec.paint ?? {}),
             },
           },
-          underLand
+          before
         );
-      }
+      };
+      for (const id of BASE_RASTER_IDS) addRaster(id, underLand);
+      for (const id of OVERLAY_RASTER_IDS) addRaster(id, overLand);
 
       // --- vías que usan los medios vigilados -------------------------
       // Ferrocarril (Natural Earth 10m) y derrotas marítimas reales
@@ -696,13 +642,16 @@ export default function MapView(props: Props) {
         id: "sat-points", type: "symbol", source: "satellites", minzoom: 2.5,
         layout: {
           "icon-image": "sat",
-          "icon-size": ["interpolate", ["linear"], ["zoom"], 2.5, 0.42, 5, 0.62, 9, 0.95, 13, 1.4],
+          "icon-size": ["interpolate", ["linear"], ["zoom"], 2.5, 0.55, 5, 0.8, 9, 1, 13, 1.15],
           "icon-allow-overlap": true, "icon-ignore-placement": true,
         },
-        paint: { "icon-color": "#7ee7ff", "icon-opacity": 0.62 },
+        paint: {
+          "icon-color": "#7ee7ff", "icon-opacity": 0.75,
+          "icon-halo-color": "rgba(4,7,13,0.85)", "icon-halo-width": 0.9,
+        },
       });
 
-      // --- trenes de Renfe (GTFS-RT): pocos, siempre por encima ---
+      // --- trenes en vivo (GTFS-RT): pocos, siempre por encima ---
 
       map.addLayer({
         id: "train-points", type: "symbol", source: "trains",
@@ -711,7 +660,7 @@ export default function MapView(props: Props) {
           "icon-image": ["match", ["coalesce", ["get", "service"], "tren"],
             "cercanías", "metro",
             "train"],
-          "icon-size": ["interpolate", ["linear"], ["zoom"], 1, 0.3, 5, 0.62, 9, 1.05, 13, 1.45],
+          "icon-size": ["interpolate", ["linear"], ["zoom"], 1, 0.5, 5, 0.8, 9, 1, 13, 1.2],
           "icon-rotate": ["coalesce", ["get", "track"], 0],
           "icon-rotation-alignment": "map",
           // todos los trenes visibles siempre, aunque se solapen
@@ -722,6 +671,7 @@ export default function MapView(props: Props) {
           "icon-color": [
             "case",
             ["==", ["coalesce", ["get", "network"], ""], "amtrak"], "#9ecbff",
+            ["==", ["coalesce", ["get", "network"], ""], "fgc"], "#8ee6a8",
             ["match", ["coalesce", ["get", "service"], "tren"],
               "alta velocidad", "#ff6b9d",
               "bajo coste", "#c084fc",
@@ -729,8 +679,8 @@ export default function MapView(props: Props) {
               "media distancia", "#8ee6a8",
               "cercanías", "#ffb454",
               "#ffb454"]],
-          "icon-halo-color": "rgba(10,6,0,0.85)",
-          "icon-halo-width": 0.8,
+          "icon-halo-color": "rgba(10,6,0,0.9)",
+          "icon-halo-width": 1.1,
         },
       });
       map.addLayer({
@@ -794,14 +744,14 @@ export default function MapView(props: Props) {
         id: "camera-points", type: "symbol", source: "cameras", minzoom: 8, filter: ["!", ["has", "point_count"]],
         layout: {
           "icon-image": "cam",
-          "icon-size": ["interpolate", ["linear"], ["zoom"], 3, 0.55, 8, 0.95, 13, 1.3],
+          "icon-size": ["interpolate", ["linear"], ["zoom"], 3, 0.45, 8, 0.6, 13, 0.8],
           "icon-allow-overlap": true, "icon-ignore-placement": true,
         },
         paint: {
           // halo fino: separa la cámara del callejero sin engordar el SDF
           "icon-color": ["case", ["==", ["get", "online"], false], "#5b5566", "#7c3aed"],
           "icon-halo-color": "#ffffff",
-          "icon-halo-width": 0.5,
+          "icon-halo-width": 0.8,
           "icon-opacity": 0.95,
         },
       });
@@ -811,7 +761,7 @@ export default function MapView(props: Props) {
         id: "vessel-points", type: "symbol", source: "vessels",
         layout: {
           "icon-image": "ship",
-          "icon-size": ["interpolate", ["linear"], ["zoom"], 1, 0.28, 6, 0.62, 10, 0.95],
+          "icon-size": ["interpolate", ["linear"], ["zoom"], 1, 0.45, 6, 0.75, 10, 0.9],
           "icon-rotate": ["coalesce", ["get", "course"], 0],
           "icon-rotation-alignment": "map",
           "icon-allow-overlap": true,
@@ -832,7 +782,7 @@ export default function MapView(props: Props) {
             "military", "milPlane",
             "state", "statePlane",
             "plane"],
-          "icon-size": ["interpolate", ["linear"], ["zoom"], 1, 0.3, 5, 0.62, 9, 1.05, 13, 1.35],
+          "icon-size": ["interpolate", ["linear"], ["zoom"], 1, 0.45, 5, 0.8, 9, 1.05, 13, 1.15],
           "icon-rotate": ["coalesce", ["get", "track"], 0],
           "icon-rotation-alignment": "map",
           "icon-allow-overlap": true,
@@ -848,8 +798,8 @@ export default function MapView(props: Props) {
           ],
           // halo constante: una expresión por dato en icon-halo-width obliga a
           // MapLibre a regenerar el SDF de cada icono en cada fotograma
-          "icon-halo-width": 0.6,
-          "icon-halo-color": "rgba(4,7,13,0.75)",
+          "icon-halo-width": 1,
+          "icon-halo-color": "rgba(4,7,13,0.85)",
         },
       });
 
@@ -861,7 +811,7 @@ export default function MapView(props: Props) {
             "military", "milPlane",
             "state", "statePlane",
             "plane"],
-          "icon-size": ["interpolate", ["linear"], ["zoom"], 5, 0.6, 9, 1.05, 13, 1.35],
+          "icon-size": ["interpolate", ["linear"], ["zoom"], 5, 0.8, 9, 1.05, 13, 1.15],
           "icon-rotate": ["coalesce", ["get", "track"], 0],
           "icon-rotation-alignment": "map",
           "icon-allow-overlap": true,
@@ -870,8 +820,8 @@ export default function MapView(props: Props) {
         paint: {
           "icon-color": ["interpolate", ["linear"], ["coalesce", ["get", "altitude_ft"], 0],
             0, "#3b7d8f", 10000, "#4dd0e1", 25000, "#a5e8ff", 40000, "#ffffff"],
-          "icon-halo-width": 0.6,
-          "icon-halo-color": "rgba(4,7,13,0.7)",
+          "icon-halo-width": 1,
+          "icon-halo-color": "rgba(4,7,13,0.8)",
           "icon-opacity": ["interpolate", ["linear"], ["coalesce", ["get", "age_s"], 0],
             10, 1, 60, 0.92, 150, 0.6, 420, 0.28],
         },
@@ -880,7 +830,7 @@ export default function MapView(props: Props) {
         id: "vessel-motion-layer", type: "symbol", source: "vessel-motion", minzoom: 4,
         layout: {
           "icon-image": "ship",
-          "icon-size": ["interpolate", ["linear"], ["zoom"], 4, 0.5, 9, 0.9],
+          "icon-size": ["interpolate", ["linear"], ["zoom"], 4, 0.65, 9, 0.9],
           "icon-rotate": ["coalesce", ["get", "course"], 0],
           "icon-rotation-alignment": "map",
           "icon-allow-overlap": true,
@@ -889,8 +839,8 @@ export default function MapView(props: Props) {
         paint: {
           "icon-color": ["interpolate", ["linear"], ["coalesce", ["get", "speed_kn"], 0],
             0, "#4a7a8c", 12, "#57d9c3", 25, "#ffd166", 33, "#ff3d71"],
-          "icon-halo-width": 0.6,
-          "icon-halo-color": "rgba(4,7,13,0.7)",
+          "icon-halo-width": 0.9,
+          "icon-halo-color": "rgba(4,7,13,0.8)",
           "icon-opacity": ["interpolate", ["linear"], ["coalesce", ["get", "age_s"], 0],
             60, 1, 300, 0.85, 900, 0.55, 2400, 0.25],
         },
@@ -902,7 +852,7 @@ export default function MapView(props: Props) {
           "icon-image": ["match", ["coalesce", ["get", "service"], "tren"],
             "cercanías", "metro",
             "train"],
-          "icon-size": ["interpolate", ["linear"], ["zoom"], 4, 0.55, 9, 1.05, 13, 1.45],
+          "icon-size": ["interpolate", ["linear"], ["zoom"], 4, 0.7, 9, 1, 13, 1.2],
           "icon-rotate": ["coalesce", ["get", "track"], 0],
           "icon-rotation-alignment": "map",
           "icon-allow-overlap": true,
@@ -911,9 +861,11 @@ export default function MapView(props: Props) {
         paint: {
           "icon-color": [
             "case",
-            ["==", ["coalesce", ["get", "network"], ""], "amtrak"], "#9ecbff", "#ffb454"],
-          "icon-halo-color": "rgba(10,6,0,0.85)",
-          "icon-halo-width": 0.8,
+            ["==", ["coalesce", ["get", "network"], ""], "amtrak"], "#9ecbff",
+            ["==", ["coalesce", ["get", "network"], ""], "fgc"], "#8ee6a8",
+            "#ffb454"],
+          "icon-halo-color": "rgba(10,6,0,0.9)",
+          "icon-halo-width": 1.1,
         },
       });
 
@@ -1024,11 +976,17 @@ export default function MapView(props: Props) {
             "trafico", "traffic",
             "transport", "train",
             "transporte", "train",
+            "health", "health",
+            "weather", "weather",
+            "flood", "flood",
+            "volcano", "volcano",
+            "cyber", "cyber",
+            "network", "network",
             "news",
             "news",
             "news"],
           "icon-size": ["interpolate", ["linear"], ["zoom"],
-            1, 0.28, 4, 0.38, 7, 0.52, 10, 0.68, 14, 0.9],
+            1, 0.55, 4, 0.7, 7, 0.85, 10, 1, 14, 1.05],
           "icon-allow-overlap": true,
           "icon-ignore-placement": true,
         },
@@ -1046,9 +1004,15 @@ export default function MapView(props: Props) {
             "trafico", CAT_COLORS.traffic || "#f97316",
             "transport", "#a3e635",
             "transporte", "#a3e635",
+            "health", CAT_COLORS.health,
+            "weather", CAT_COLORS.weather,
+            "flood", CAT_COLORS.flood,
+            "volcano", CAT_COLORS.volcano,
+            "cyber", CAT_COLORS.cyber,
+            "network", CAT_COLORS.network,
             CAT_COLORS.news],
-          "icon-halo-color": "rgba(4,7,13,0.9)",
-          "icon-halo-width": 1.2,
+          "icon-halo-color": "rgba(4,7,13,0.92)",
+          "icon-halo-width": 1.5,
           "icon-opacity": ["case", ["==", ["coalesce", ["get", "sources_count"], 1], 1], 0.82, 1],
         },
       });
@@ -1474,81 +1438,49 @@ export default function MapView(props: Props) {
     src.setData(aircraft as any);
   }, [aircraft, layersReady]);
 
-  /* fondo de mapa: una capa ráster activa a la vez; al elegir teselas se
-     ocultan los rellenos vectoriales propios para no taparlas */
+  /* fondo de mapa: una base + las capas transparentes que le corresponden.
+     El fondo «operativo» es el único que pinta tierra y países (Natural
+     Earth), así que lleva solo las etiquetas encima. */
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !layersReady) return;
-    const raster = basemap && basemap !== "vectorial";
-    // pares base + etiquetas + red de transporte: la red de carreteras y
-    // ferrocarril acompaña SIEMPRE al fondo, sea cual sea el elegido
-    const pair: Record<string, string[]> = {
-      // elegido suelto: fondo mínimo + red viaria/ferroviaria y derrotas
-      vectorial: ["transporte", "oceanoref"],
-      transporte: ["transporte", "oceanoref"],
-      calles: ["calles", "transporte"],
-      oscuro: ["oscuro", "oscuro_ref", "transporte"],
-      claro: ["claro", "claro_ref", "transporte"],
-      satelite: ["satelite", "transporte"],
-    };
-    const active = pair[basemap ?? ""] ?? [];
-    for (const id of ["calles", "oscuro", "claro", "satelite", "oscuro_ref", "claro_ref", "transporte", "oceanoref"]) {
-      const layer = map.getLayer(`base-${id}-raster`);
-      if (!layer) continue;
-      map.setLayoutProperty(
-        `base-${id}-raster`,
-        "visibility",
-        active.includes(id) ? "visible" : "none"
-      );
-    }
-    // En el fondo vectorial propio las teselas se insertaron DEBAJO del relleno
-    // de tierra (para que este las tape si están apagadas). Si se pide la red
-    // de transporte, hay que subirla por encima del relleno para verla.
-    if (map.getLayer("base-transporte-raster") && map.getLayer("countries-fill")) {
-      try {
-        if (!map.getLayoutProperty("base-transporte-raster", "visibility")) {
-          // sin propiedad fijada aún: colocarla donde corresponde una vez
-          map.moveLayer("base-transporte-raster", "coastline");
-        }
-      } catch { /* la capa aún no existe en este estilo */ }
-    }
-    // las capas superpuestas no tapan la base: opacidad según para qué son
-    if (map.getLayer("base-transporte-raster")) {
-      map.setPaintProperty(
-        "base-transporte-raster",
-        "raster-opacity",
-        // el callejero ya trae la red: se refuerza poco; sobre grises y
-        // ortofoto se pinta con más cuerpo para que se lea
-        basemap === "calles" ? 0.55 : 0.85
-      );
-    }
-    // derrotas marítimas de Esri: solo cuando el fondo es oscuro (su paleta
-    // clara sobre el claro no se distingue y duplicaría nuestras sealanes)
-    if (map.getLayer("base-oceanoref-raster")) {
-      map.setLayoutProperty(
-        "base-oceanoref-raster",
-        "visibility",
-        basemap === "oscuro" || basemap === "claro" || basemap === "transporte"
-          ? "visible"
-          : "none"
-      );
-      map.setPaintProperty("base-oceanoref-raster", "raster-opacity", 0.55);
-    }
-    const showVector = !raster;
-    for (const id of ["land-fill", "countries-fill"]) {
-      if (map.getLayer(id)) {
-        map.setLayoutProperty(id, "visibility", showVector ? "visible" : "none");
+    const set = BASEMAP_SET[basemap ?? ""] ?? BASEMAP_SET.operativo;
+    const active = new Set([...set.bases, ...set.overlays]);
+    for (const id of [...BASE_RASTER_IDS, ...OVERLAY_RASTER_IDS]) {
+      if (map.getLayer(`base-${id}-raster`)) {
+        map.setLayoutProperty(
+          `base-${id}-raster`,
+          "visibility",
+          active.has(id) ? "visible" : "none"
+        );
       }
     }
-    // con ortofoto o callejero, las fronteras quedan como línea fina
+    // la red viaria propia (Natural Earth) solo cuando la base no trae calles:
+    // el ferrocarril se deja siempre, porque es lo que se vigila
+    if (map.getLayer("roads-line")) {
+      const noStreets = set.bases.length === 0 || basemap === "relieve" || basemap === "maritimo";
+      map.setLayoutProperty("roads-line", "visibility", noStreets ? "visible" : "none");
+    }
+    const vectorBase = set.bases.length === 0;
+    for (const id of ["land-fill", "countries-fill"]) {
+      if (map.getLayer(id)) {
+        map.setLayoutProperty(id, "visibility", vectorBase ? "visible" : "none");
+      }
+    }
+    // fronteras y retícula: más tenues cuando hay imagen debajo, y casi
+    // invisibles sobre bases claras (su azul oscuro no contrasta)
     if (map.getLayer("countries-line")) {
-      map.setPaintProperty("countries-line", "line-opacity", raster ? 0.25 : 0.55);
+      map.setPaintProperty(
+        "countries-line",
+        "line-opacity",
+        vectorBase ? 0.55 : set.light ? 0.22 : 0.35
+      );
     }
     if (map.getLayer("graticule")) {
-      map.setPaintProperty("graticule", "line-opacity", raster ? 0.12 : 0.35);
+      map.setPaintProperty("graticule", "line-opacity", vectorBase ? 0.35 : 0.12);
     }
     if (map.getLayer("coastline")) {
-      map.setPaintProperty("coastline", "line-opacity", raster ? 0.3 : 0.55);
+      map.setPaintProperty("coastline", "line-opacity", vectorBase ? 0.55 : 0.3);
     }
   }, [basemap, layersReady]);
 
@@ -1633,11 +1565,14 @@ export default function MapView(props: Props) {
       if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", on ? "visible" : "none");
     };
     toggle("aircraft-points", visible.aircraft !== false);
+    toggle("aircraft-motion-layer", visible.aircraft !== false);
     toggle("vessel-points", visible.vessels !== false);
+    toggle("vessel-motion-layer", visible.vessels !== false);
     toggle("sat-points", visible.satellites !== false);
     toggle("sat-dots", visible.satellites !== false);
     toggle("train-points", visible.trains !== false);
     toggle("train-labels", visible.trains !== false);
+    toggle("train-motion-layer", visible.trains !== false);
     toggle("air-halo", visible.air !== false);
     toggle("air-points", visible.air !== false);
     toggle("camera-points", visible.cameras !== false);
@@ -2149,30 +2084,40 @@ export default function MapView(props: Props) {
         </div>
       )}
 
-      <div className="map-legend" title="Color de cada tipo de suceso. El tamaño del punto crece con la magnitud.">
+      <details className="map-legend" aria-label="Leyenda del mapa">
+        <summary><Icon name="layers" size={15} /> Leyenda del mapa</summary>
+        <div className="map-legend-content">
         <div className="ml-title">Tipo de suceso</div>
         {Object.entries(CAT_COLORS).map(([cat, color]) => (
           <div className="legend-row" key={cat}>
-            <span className="legend-dot" style={{ background: color, color }} />
+            <span className="legend-icon" style={{ color }}><Icon name={cat as IconName} size={15} /></span>
             <span>{categoryMeta(cat).label}</span>
           </div>
         ))}
         <div className="ml-title" style={{ marginTop: 6 }}>Otros elementos</div>
         <div className="legend-row">
-          <span className="legend-dot" style={{ background: "#a5e8ff", color: "#a5e8ff" }} />
+          <span className="legend-icon" style={{ color: "#a5e8ff" }}><Icon name="plane" size={15} /></span>
           <span>Aeronave</span>
         </div>
         <div className="legend-row">
-          <span className="legend-dot" style={{ background: "#57d9c3", color: "#57d9c3" }} />
+          <span className="legend-icon" style={{ color: "#57d9c3" }}><Icon name="ship" size={15} /></span>
           <span>Buque</span>
         </div>
         <div className="legend-row">
-          <span className="legend-dot" style={{ background: "#b388ff", color: "#b388ff" }} />
+          <span className="legend-icon" style={{ color: "#7ee7ff" }}><Icon name="satellite" size={15} /></span>
+          <span>Satélite</span>
+        </div>
+        <div className="legend-row">
+          <span className="legend-icon" style={{ color: "#b388ff" }}><Icon name="camera" size={15} /></span>
           <span>Cámara</span>
         </div>
         <div className="legend-row">
-          <span className="legend-dot" style={{ background: "#ffb454", color: "#ffb454" }} />
-          <span>Tren (Renfe y Amtrak)</span>
+          <span className="legend-icon" style={{ color: "#ffb454" }}><Icon name="train" size={15} /></span>
+          <span>Tren (Renfe, FGC y Amtrak)</span>
+        </div>
+        <div className="legend-row">
+          <span className="legend-icon" style={{ color: "#a5d6a7" }}><Icon name="air" size={15} /></span>
+          <span>Sensor de aire</span>
         </div>
         <div className="legend-row">
           <span className="legend-dot" style={{ background: "#ffcf8b", color: "#ffcf8b", borderRadius: 1, height: 2 }} />
@@ -2183,10 +2128,11 @@ export default function MapView(props: Props) {
           <span>Derrota marítima (AIS)</span>
         </div>
         <div className="legend-row">
-          <span className="legend-dot" style={{ background: "#9fc4d8", color: "#9fc4d8" }} />
+          <span className="legend-icon" style={{ color: "#9fc4d8" }}><Icon name="city" size={15} /></span>
           <span>Ciudad (pulsable)</span>
         </div>
-      </div>
+        </div>
+      </details>
     </div>
   );
 }

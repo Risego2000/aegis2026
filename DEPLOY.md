@@ -76,16 +76,19 @@ Sirve para desplegar sin compilar: `docker run -p 8000:8000 -v aegis:/data ghcr.
 
 El cliente resuelve la API en cascada, **sin recompilar**:
 
-1. `?api=https://mi-backend.example` en la URL (se guarda en `localStorage`).
+1. `?api=https://mi-backend.example` en la URL, solo para ese navegador.
 2. `runtime-config.json` del propio sitio:
    ```json
-   { "apiBase": "https://mi-backend.example" }
+   { "api": "https://mi-backend.example" }
    ```
 3. `NEXT_PUBLIC_AEGIS_API` en tiempo de compilación.
 4. Mismo origen (cuando API y cliente se sirven juntos, como en el contenedor).
 
-Es decir: publica la API donde quieras, edita `frontend/public/runtime-config.json`
-con su URL y vuelve a subir el sitio. Eso es todo lo que faltaba.
+En GitHub Pages no edites el fichero a mano: el workflow **AEGIS · Pages** lo
+reescribe con `vars.AEGIS_API` (o el input `api_url`), comprueba que
+`/api/health` responde y aborta si la API falta o está caída. Después verifica
+que el `runtime-config.json` dentro de `frontend/out` lleva esa URL. Así el
+sitio no se publica con `"api": ""` ni con un túnel muerto.
 
 ## Variables de entorno
 

@@ -12,27 +12,28 @@
 type Ctx = CanvasRenderingContext2D;
 
 const SIZE = 24;
+const PIXEL_RATIO = 2;
 
 function makeCanvas(draw: (g: Ctx) => void, size = SIZE): ImageData {
   const cv = document.createElement("canvas");
-  cv.width = size;
-  cv.height = size;
+  cv.width = size * PIXEL_RATIO;
+  cv.height = size * PIXEL_RATIO;
   const g = cv.getContext("2d")!;
-  g.clearRect(0, 0, size, size);
-  // Un contorno blanco alrededor del icono ayuda a que se lea sobre el mapa
-  // oscuro; el relleno es la única parte que MapLibre recolorea en modo SDF
-  // (el SDF trabaja con la cobertura alfa, así que dibujamos en blanco).
-  g.strokeStyle = "rgba(255,255,255,0.28)";
-  g.lineWidth = 2.6;
-  g.lineJoin = "round";
-  draw(g);
-  g.stroke();
+  g.scale(PIXEL_RATIO, PIXEL_RATIO);
+  // El mapa colorea el alfa en modo SDF. Sin un segundo halo translúcido, las
+  // siluetas siguen nítidas al ampliar y no se funden entre sí a escala global.
   g.fillStyle = "#ffffff";
   g.strokeStyle = "#ffffff";
-  g.lineWidth = 1.5;
+  g.lineWidth = 1;
+  g.lineJoin = "round";
+  g.lineCap = "round";
   draw(g);
   g.fill();
-  return g.getImageData(0, 0, size, size);
+  g.stroke();
+  // El lienzo está al doble de resolución (PIXEL_RATIO): hay que devolver los
+  // 48×48 físicos completos. Recortar `size` dejaba solo la esquina superior
+  // izquierda y los iconos se veían como manchas.
+  return g.getImageData(0, 0, size * PIXEL_RATIO, size * PIXEL_RATIO);
 }
 
 const PI = Math.PI;
@@ -119,6 +120,17 @@ function drawHeli(g: Ctx) {
   g.rect(8.6, 18, 7, 1.6);
 }
 
+/** Dron: cuatro rotores alrededor de un cuerpo compacto. */
+function drawDrone(g: Ctx) {
+  g.beginPath();
+  g.rect(9, 9, 6, 6);
+  g.rect(4, 4, 16, 1.8); g.rect(4, 18.2, 16, 1.8);
+  g.rect(4, 5, 1.8, 14); g.rect(18.2, 5, 1.8, 14);
+  for (const [x, y] of [[4, 4], [20, 4], [4, 20], [20, 20]]) {
+    g.moveTo(x + 2, y); g.arc(x, y, 2, 0, 2 * PI);
+  }
+}
+
 /** Buque: casco con proa y dos palos. */
 function drawShip(g: Ctx) {
   g.beginPath();
@@ -197,27 +209,15 @@ function drawCamera(g: Ctx) {
 /* Sucesos: un icono por categoría                                     */
 /* ------------------------------------------------------------------ */
 
-/** Terremoto: epicentro con ondas concéntricas y grieta. */
+/** Terremoto: traza sísmica; se distingue del conflicto incluso sin color. */
 function drawEarthquake(g: Ctx) {
   g.beginPath();
-  g.moveTo(12, 1.8);
-  g.lineTo(14.4, 8.4);
-  g.lineTo(19.4, 4.6);
-  g.lineTo(17.6, 10.4);
-  g.lineTo(22.4, 10.6);
-  g.lineTo(18.2, 13.8);
-  g.lineTo(20.8, 17.4);
-  g.lineTo(15, 15.6);
-  g.lineTo(16.6, 22.2);
-  g.lineTo(12, 17.6);
-  g.lineTo(7.4, 22.2);
-  g.lineTo(9, 15.6);
-  g.lineTo(3.2, 17.4);
-  g.lineTo(5.8, 13.8);
-  g.lineTo(1.6, 10.6);
-  g.lineTo(6.4, 10.4);
-  g.lineTo(4.6, 4.6);
-  g.lineTo(9.6, 8.4);
+  g.moveTo(1.5, 13); g.lineTo(5.5, 13); g.lineTo(7.5, 8);
+  g.lineTo(10, 18); g.lineTo(12.5, 4); g.lineTo(15, 16);
+  g.lineTo(17.2, 10); g.lineTo(18.8, 13); g.lineTo(22.5, 13);
+  g.lineTo(22.5, 15); g.lineTo(17.5, 15); g.lineTo(15.5, 13);
+  g.lineTo(14.5, 19); g.lineTo(12.5, 15); g.lineTo(10.5, 22);
+  g.lineTo(7.3, 14.5); g.lineTo(6, 16); g.lineTo(1.5, 16);
   g.closePath();
 }
 
@@ -258,18 +258,12 @@ function drawFire(g: Ctx) {
   g.closePath();
 }
 
-/** Conflicto: explosión de ocho puntas con núcleo. */
+/** Conflicto: dos trayectorias cruzadas, sin reutilizar la estrella sísmica. */
 function drawConflict(g: Ctx) {
   g.beginPath();
-  for (let i = 0; i < 16; i++) {
-    const a = (i / 16) * 2 * PI - PI / 2;
-    const r = i % 2 === 0 ? 11 : 4.2;
-    const x = 12 + Math.cos(a) * r;
-    const y = 12 + Math.sin(a) * r;
-    if (i === 0) g.moveTo(x, y);
-    else g.lineTo(x, y);
-  }
-  g.closePath();
+  g.moveTo(3, 4); g.lineTo(5, 3); g.lineTo(21, 19); g.lineTo(19, 21); g.closePath();
+  g.moveTo(19, 3); g.lineTo(21, 5); g.lineTo(5, 21); g.lineTo(3, 19); g.closePath();
+  g.rect(1.8, 1.8, 4.2, 1.8); g.rect(18, 1.8, 4.2, 1.8);
 }
 
 /** Protesta: silueta de multitud con pancarta. */
@@ -361,11 +355,56 @@ function drawPin(g: Ctx) {
   g.closePath();
 }
 
+/** Símbolos de las categorías que antes compartían el marcador genérico. */
+function drawHealth(g: Ctx) {
+  g.beginPath(); g.rect(9, 2, 6, 20); g.rect(2, 9, 20, 6);
+}
+
+function drawWeather(g: Ctx) {
+  g.beginPath();
+  g.arc(9, 11, 5, PI, 2 * PI); g.arc(15, 11, 5, PI, 2 * PI);
+  g.rect(4, 11, 16, 4);
+  g.moveTo(7, 18); g.lineTo(9, 18); g.lineTo(8, 22); g.closePath();
+  g.moveTo(15, 18); g.lineTo(17, 18); g.lineTo(16, 22); g.closePath();
+}
+
+function drawFlood(g: Ctx) {
+  g.beginPath();
+  g.moveTo(12, 2); g.bezierCurveTo(9, 7, 6, 10, 6, 14);
+  g.arc(12, 14, 6, PI, 0); g.bezierCurveTo(18, 10, 15, 7, 12, 2);
+  g.closePath();
+  g.rect(3, 20, 18, 1.8);
+}
+
+function drawVolcano(g: Ctx) {
+  g.beginPath();
+  g.moveTo(2, 21); g.lineTo(9, 9); g.lineTo(12, 13);
+  g.lineTo(15, 9); g.lineTo(22, 21); g.closePath();
+  g.rect(11, 2, 2, 5);
+}
+
+function drawCyber(g: Ctx) {
+  g.beginPath(); g.rect(5, 5, 14, 14);
+  g.rect(1, 9, 4, 2); g.rect(1, 14, 4, 2);
+  g.rect(19, 9, 4, 2); g.rect(19, 14, 4, 2);
+  g.rect(9, 1, 2, 4); g.rect(14, 1, 2, 4);
+  g.rect(9, 19, 2, 4); g.rect(14, 19, 2, 4);
+}
+
+function drawNetwork(g: Ctx) {
+  g.beginPath();
+  g.arc(4, 5, 3, 0, 2 * PI); g.arc(20, 5, 3, 0, 2 * PI);
+  g.arc(4, 19, 3, 0, 2 * PI); g.arc(20, 19, 3, 0, 2 * PI);
+  g.rect(4, 4, 16, 1.5); g.rect(4, 18, 16, 1.5);
+  g.rect(3.3, 5, 1.5, 14); g.rect(19.3, 5, 1.5, 14);
+}
+
 const DRAWERS: Record<string, (g: Ctx) => void> = {
   plane: drawPlane,
   milPlane: drawMilitaryPlane,
   statePlane: drawStatePlane,
   heli: drawHeli,
+  drone: drawDrone,
   ship: drawShip,
   sat: drawSatellite,
   train: drawTrain,
@@ -381,6 +420,12 @@ const DRAWERS: Record<string, (g: Ctx) => void> = {
   economy: drawEconomy,
   news: drawNews,
   traffic: drawTraffic,
+  health: drawHealth,
+  weather: drawWeather,
+  flood: drawFlood,
+  volcano: drawVolcano,
+  cyber: drawCyber,
+  network: drawNetwork,
   generic: drawGeneric,
   pin: drawPin,
 };
@@ -402,6 +447,12 @@ export function iconForCategory(cat?: string | null): string {
     case "military": return "military";
     case "diplomacy": return "diplomacy";
     case "economy": return "economy";
+    case "health": return "health";
+    case "weather": return "weather";
+    case "flood": return "flood";
+    case "volcano": return "volcano";
+    case "cyber": return "cyber";
+    case "network": return "network";
     case "traffic":
     case "trafico": return "traffic";
     case "transport":

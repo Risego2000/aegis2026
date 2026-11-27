@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev -p 3001",
     "build": "next build && node scripts/publish-export.mjs",
+    "runtime-config": "node scripts/write-runtime-config.mjs",
     "lint": "next lint"
   },
   "dependencies": {

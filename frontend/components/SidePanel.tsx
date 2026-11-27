@@ -2,6 +2,7 @@
 
 import type { AppConfig, Fence, Health, SourceStatus } from "@/lib/types";
 import { CATEGORY_META, fmtNumber, timeAgo, esError } from "@/lib/format";
+import { Icon, type IconName } from "@/components/Icon";
 
 export type LayerCounts = {
   events: { total: number; last_24h?: number; by_category: Record<string, number> };
@@ -21,8 +22,6 @@ type Props = {
   categoryCounts: Record<string, number>;
   activeCats: string[];
   toggleCat: (cat: string) => void;
-  hours: number;
-  setHours: (h: number) => void;
   fences: Fence[];
   aoiMode: boolean;
   setAoiMode: (v: boolean) => void;
@@ -50,80 +49,105 @@ type LayerDef = {
   label: string;
   color: string;
   hint: string;
+  group: "risk" | "mobility" | "environment";
   count?: (c: LayerCounts | null) => number | null;
   breakdown?: string;
 };
 
+const LAYER_GROUPS: { key: LayerDef["group"]; label: string }[] = [
+  { key: "risk", label: "Sucesos y alertas" },
+  { key: "mobility", label: "Tráfico y movilidad" },
+  { key: "environment", label: "Entorno y referencia" },
+];
+
 const LAYERS: LayerDef[] = [
   {
-    key: "events", label: "Sucesos OSINT", color: "#35e0d0",
+    key: "events", label: "Sucesos OSINT", color: "#35e0d0", group: "risk",
     hint: "Sismos, incendios, conflictos, protestas y demás sucesos consolidados de 8 fuentes abiertas.",
     count: (c) => c?.events.total ?? null, breakdown: "events",
   },
   {
-    key: "aircraft", label: "Aeronaves (ADS-B)", color: "#a5e8ff",
+    key: "aircraft", label: "Aeronaves (ADS-B)", color: "#a5e8ff", group: "mobility",
     hint: "Aviones detectados por receptores ADS-B abiertos. Cada uno abre su ficha con ruta de origen y destino.",
     count: (c) => c?.aircraft ?? null, breakdown: "aircraft",
   },
   {
-    key: "vessels", label: "Buques (AIS)", color: "#57d9c3",
+    key: "vessels", label: "Buques (AIS)", color: "#57d9c3", group: "mobility",
     hint: "Barcos con señal AIS abierta. La ficha muestra tipo, rumbo, calado y puerto de destino.",
     count: (c) => c?.vessels ?? null, breakdown: "vessels",
   },
   {
-    key: "satellites", label: "Satélites", color: "#7ee7ff",
+    key: "satellites", label: "Satélites", color: "#7ee7ff", group: "environment",
     hint: "Satélites propagados con elementos orbitales públicos. Pulsa uno para ver órbita y huella.",
     count: (c) => c?.satellites ?? null, breakdown: "satellites",
   },
   {
-    key: "trains", label: "Trenes (Renfe)", color: "#ffb454",
-    hint: "Trenes de Renfe en vivo (Cercanías, AVE, Avlo, Alvia, MD) desde el GTFS-Realtime abierto. De madrugada el feed está vacío: no hay servicio.",
+    key: "trains", label: "Trenes en vivo", color: "#ffb454", group: "mobility",
+    hint: "Posiciones de Renfe (Cercanías, AVE, Avlo, Alvia, MD), FGC y Amtrak desde sus feeds GTFS-Realtime abiertos. Ouigo e Iryo no publican la posición de sus trenes.",
     count: (c) => c?.trains ?? null,
   },
   {
-    key: "cameras", label: "Cámaras de tráfico", color: "#b388ff",
+    key: "cameras", label: "Cámaras de tráfico", color: "#b388ff", group: "mobility",
     hint: "Cámaras públicas con imagen abierta. No hay cámaras de calle en todos los países: mira la cobertura.",
     count: (c) => c?.cameras.total ?? null, breakdown: "cameras",
   },
   {
-    key: "air", label: "Calidad del aire", color: "#a5d6a7",
+    key: "air", label: "Calidad del aire", color: "#a5d6a7", group: "environment",
     hint: "Sensores ciudadanos de aire (PM2.5, PM10).",
     count: (c) => c?.air ?? null, breakdown: "air",
   },
   {
-    key: "places", label: "Núcleos urbanos", color: "#8fb4c9",
+    key: "places", label: "Núcleos urbanos", color: "#8fb4c9", group: "environment",
     hint: "7.342 ciudades y poblaciones de todo el mundo. Cada una se puede pulsar para abrir su ficha.",
     count: (c) => c?.places ?? null, breakdown: "places",
   },
   {
-    key: "fences", label: "Zonas vigiladas", color: "#ffd166",
+    key: "fences", label: "Zonas vigiladas", color: "#ffd166", group: "risk",
     hint: "Áreas que tú dibujas. Cuando algo entra o sale, se genera una alerta.",
     count: (c) => c?.fences ?? null,
   },
-  { key: "graticule", label: "Retícula de coordenadas", color: "#2f5a70", hint: "Meridianos y paralelos para situar las coordenadas." },
+  { key: "graticule", label: "Retícula de coordenadas", color: "#2f5a70", group: "environment", hint: "Meridianos y paralelos para situar las coordenadas." },
 ];
 
-const WINDOWS = [
-  { h: 15 / 60, label: "AHORA", hint: "Últimos 15 minutos: lo que acaba de entrar" },
-  { h: 1, label: "1 H", hint: "Solo la última hora" },
-  { h: 6, label: "6 H", hint: "Últimas 6 horas" },
-  { h: 24, label: "24 H", hint: "Último día" },
-  { h: 72, label: "3 D", hint: "Últimos 3 días" },
-  { h: 168, label: "7 D", hint: "Última semana" },
-];
+const LAYER_ICONS: Record<string, IconName> = {
+  events: "event", aircraft: "plane", vessels: "ship", satellites: "satellite",
+  trains: "train", cameras: "camera", air: "air", places: "city",
+  fences: "target", graticule: "grid",
+};
 
-const BASEMAPS = [
-  { id: "vectorial", label: "Operativo", hint: "Fondo oscuro detallado con etiquetas (recomendado)" },
-  { id: "calles", label: "Calles", hint: "Calles y carreteras al estilo mapa urbano" },
-  { id: "oscuro", label: "Oscuro", hint: "Gris oscuro sin etiquetas" },
-  { id: "claro", label: "Claro", hint: "Fondo claro para imprimir o proyectar" },
-  { id: "satelite", label: "Satélite", hint: "Imagen real de satélite" },
+/** Un fondo por pregunta: qué se está mirando y qué base lo hace legible. */
+export const BASEMAPS: { id: string; label: string; icon: IconName; hint: string }[] = [
   {
-    id: "transporte",
-    label: "Red viaria y ferroviaria",
-    hint: "Solo carreteras, autovías, ferrocarril y derrotas marítimas (superpuesto)",
+    id: "operativo", label: "Operativo", icon: "layers",
+    hint: "Lectura global: fronteras y etiquetas sobre fondo propio, sin callejero que compita con el dato",
+  },
+  {
+    id: "detalle", label: "Detalle", icon: "city",
+    hint: "Callejero oscuro: manzanas y vías para trabajo urbano sin deslumbrar",
+  },
+  {
+    id: "imagen", label: "Imagen", icon: "satellite",
+    hint: "Ortofoto real con límites, lugares y red viaria: incendios, puertos y aeródromos",
+  },
+  {
+    id: "relieve", label: "Relieve", icon: "terrain",
+    hint: "Sombreado del terreno: sismos, volcanes, inundaciones y orografía de un vuelo",
+  },
+  {
+    id: "maritimo", label: "Marítimo", icon: "ship",
+    hint: "Batimetría y costa para buques, derrotas y puertos",
+  },
+  {
+    id: "calles", label: "Calles", icon: "map",
+    hint: "Callejero claro con nombres y sentidos, hasta zoom de portal",
+  },
+  {
+    id: "claro", label: "Claro", icon: "sun",
+    hint: "Base mínima legible en informes y proyecciones",
   },
 ];
+
+export const BASEMAP_IDS = BASEMAPS.map((b) => b.id);
 
 const FLAGS: Record<string, string> = {
   ES: "🇪🇸", GB: "🇬🇧", US: "🇺🇸", FI: "🇫🇮", DE: "🇩🇪", FR: "🇫🇷",
@@ -146,34 +170,10 @@ export default function SidePanel(p: Props) {
           <span className="mono tiny faint" title="Motor de almacenamiento de eventos">
             {p.health?.storage.backend ?? "—"}
           </span>
-          <button className="panel-close" onClick={() => p.onClose?.()} aria-label="Cerrar panel">✕</button>
+          <button className="panel-close" onClick={() => p.onClose?.()} aria-label="Cerrar panel"><Icon name="close" size={16} /></button>
         </span>
       </div>
       <div className="panel-body">
-        {/* -------------------------------------------------- ventana temporal */}
-        <div className="section">
-          <div className="section-title">
-            <span>Periodo de los sucesos</span>
-            <span className="st-count">{p.hours >= 24 ? `${Math.round(p.hours / 24)} d` : `${p.hours} h`}</span>
-          </div>
-          <div className="chips">
-            {WINDOWS.map((w) => (
-              <button
-                key={w.h}
-                className={`chip ${p.hours === w.h ? "active" : ""}`}
-                onClick={() => p.setHours(w.h)}
-                title={w.hint}
-                aria-pressed={p.hours === w.h}
-              >
-                {w.label}
-              </button>
-            ))}
-          </div>
-          <div className="cov-note">
-            Filtra <b>solo los sucesos</b> (no el tráfico aéreo ni los barcos, que son siempre el último dato).
-          </div>
-        </div>
-
         {/* ----------------------------------------------------------- capas */}
         <div className="section">
           <div className="section-title">
@@ -182,60 +182,43 @@ export default function SidePanel(p: Props) {
               {Object.values(p.visible).filter(Boolean).length}/{LAYERS.length} activas
             </span>
           </div>
-          {LAYERS.map((layer) => {
-            const count = layer.count ? layer.count(p.layerCounts) : null;
-            const on = p.visible[layer.key] !== false;
-            return (
-              <div
-                className={`layer-row ${on ? "" : "off"}`}
-                key={layer.key}
-                onClick={() => toggleLayer(layer.key)}
-                title={layer.hint}
-                role="button"
-                aria-pressed={on}
-              >
-                <span className="layer-swatch" style={{ background: layer.color, color: layer.color }} />
-                <span className="layer-name">{layer.label}</span>
-                {count !== null && count !== undefined && (
-                  layer.breakdown ? (
-                    <button
-                      className="layer-count num-link"
-                      title={`Ver los ${fmtNumber(count)} elementos de «${layer.label}»`}
-                      onClick={(e) => { e.stopPropagation(); p.onBreakdownLayer(layer.breakdown!); }}
-                    >
-                      {fmtNumber(count)}
-                    </button>
-                  ) : (
-                    <span className="layer-count">{fmtNumber(count)}</span>
-                  )
-                )}
-                <span className={`switch ${on ? "on" : ""}`} />
-              </div>
-            );
-          })}
+          {LAYER_GROUPS.map((group) => (
+            <div key={group.key} style={{ marginTop: 8 }}>
+              <div className="group-label">{group.label}</div>
+              {LAYERS.filter((l) => l.group === group.key).map((layer) => {
+                const count = layer.count ? layer.count(p.layerCounts) : null;
+                const on = p.visible[layer.key] !== false;
+                return (
+                  <div
+                    className={`layer-row ${on ? "" : "off"}`}
+                    key={layer.key}
+                    onClick={() => toggleLayer(layer.key)}
+                    title={layer.hint}
+                    role="button"
+                    aria-pressed={on}
+                  >
+                    <span className="layer-swatch" style={{ color: layer.color }}><Icon name={LAYER_ICONS[layer.key]} size={17} /></span>
+                    <span className="layer-name">{layer.label}</span>
+                    {count !== null && count !== undefined && (
+                      layer.breakdown ? (
+                        <button
+                          className="layer-count num-link"
+                          title={`Ver los ${fmtNumber(count)} elementos de «${layer.label}»`}
+                          onClick={(e) => { e.stopPropagation(); p.onBreakdownLayer(layer.breakdown!); }}
+                        >
+                          {fmtNumber(count)}
+                        </button>
+                      ) : (
+                        <span className="layer-count">{fmtNumber(count)}</span>
+                      )
+                    )}
+                    <span className={`switch ${on ? "on" : ""}`} />
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </div>
-
-        {/* ------------------------------------------------- exportar la vista */}
-        {p.onExport && (
-          <div className="section">
-            <div className="section-title">
-              <span>Descargar lo que se ve</span>
-              <span className="st-count">mismos filtros que el mapa</span>
-            </div>
-            <div className="btn-row" style={{ flexWrap: "wrap" }}>
-              <button className="btn" onClick={() => p.onExport!("csv")} title="CSV con separador ; y acentos, para Excel">
-                ⬇ CSV
-              </button>
-              <button className="btn" onClick={() => p.onExport!("geojson")} title="GeoJSON para QGIS, kepler.gl o cualquier SIG">
-                ⬇ GeoJSON
-              </button>
-            </div>
-            <div className="cov-note">
-              CSV abre directamente en Excel (separador «;» y codificación UTF-8); el GeoJSON conserva
-              la geometría (puntos y áreas de los incendios y ciclones).
-            </div>
-          </div>
-        )}
 
         {/* --------------------------------------------------- fondo de mapa */}
         <div className="section">
@@ -247,14 +230,17 @@ export default function SidePanel(p: Props) {
             {BASEMAPS.map((b) => (
               <button
                 key={b.id}
-                className={`chip ${p.basemap === b.id ? "active" : ""}`}
+                className={`chip chip-map ${p.basemap === b.id ? "active" : ""}`}
                 onClick={() => p.onBasemap(b.id)}
                 title={b.hint}
+                aria-pressed={p.basemap === b.id}
               >
+                <Icon name={b.icon} size={13} />
                 {b.label}
               </button>
             ))}
           </div>
+          <div className="section-hint">{BASEMAPS.find((b) => b.id === p.basemap)?.hint ?? ""}</div>
         </div>
 
         {/* ------------------------------------------------------ categorías */}
@@ -269,7 +255,7 @@ export default function SidePanel(p: Props) {
             const active = p.activeCats.includes(cat);
             return (
               <div className="layer-row" key={cat} onClick={() => p.toggleCat(cat)} title={`${meta.label}: ${count} sucesos en el periodo elegido`}>
-                <span className="layer-swatch" style={{ background: meta.color, color: meta.color }} />
+                <span className="layer-swatch" style={{ color: meta.color }}><Icon name={meta.icon} size={17} /></span>
                 <span className="layer-name" style={{ opacity: active ? 1 : 0.45 }}>{meta.label}</span>
                 <button
                   className="layer-count num-link"
@@ -293,7 +279,7 @@ export default function SidePanel(p: Props) {
           {networks.length === 0 && <div className="tiny faint">Cargando redes…</div>}
           {networks.map(([key, n]) => (
             <div className="layer-row" key={key} title={`${n.label}: ${n.count} cámaras públicas (${n.online} con imagen ahora mismo)`}>
-              <span className="layer-swatch" style={{ background: "#b388ff", color: "#b388ff" }} />
+              <span className="layer-swatch" style={{ color: "#b388ff" }}><Icon name="camera" size={17} /></span>
               <span className="layer-name">
                 {FLAGS[n.country] ? `${FLAGS[n.country]} ` : ""}{n.label}
               </span>
@@ -314,7 +300,7 @@ export default function SidePanel(p: Props) {
           </div>
           <div className="btn-row" style={{ marginBottom: 9 }}>
             <button className={`btn ${p.aoiMode ? "primary" : ""}`} onClick={() => p.setAoiMode(!p.aoiMode)}>
-              {p.aoiMode ? "◉ Toca el mapa…" : "＋ Dibujar zona"}
+              <Icon name={p.aoiMode ? "target" : "plus"} size={15} /> {p.aoiMode ? "Toca el mapa…" : "Dibujar zona"}
             </button>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 10 }}>
@@ -344,7 +330,7 @@ export default function SidePanel(p: Props) {
                 {f.name}
                 <span className="mono tiny faint"> · {Math.round((f.radius_m ?? 0) / 1000)} km</span>
               </span>
-              <button className="faint tiny" onClick={() => p.deleteFence(f.id)} title="Eliminar la zona">✕</button>
+              <button className="faint tiny" onClick={() => p.deleteFence(f.id)} title="Eliminar la zona" aria-label="Eliminar la zona"><Icon name="close" size={14} /></button>
             </div>
           ))}
         </div>
@@ -392,6 +378,28 @@ export default function SidePanel(p: Props) {
             </div>
           ))}
         </div>
+
+        {/* ------------------------------------------------- exportar la vista */}
+        {p.onExport && (
+          <div className="section">
+            <div className="section-title">
+              <span>Descargar lo que se ve</span>
+              <span className="st-count">mismos filtros que el mapa</span>
+            </div>
+            <div className="btn-row" style={{ flexWrap: "wrap" }}>
+              <button className="btn" onClick={() => p.onExport!("csv")} title="CSV con separador ; y acentos, para Excel">
+                <Icon name="download" size={15} /> CSV
+              </button>
+              <button className="btn" onClick={() => p.onExport!("geojson")} title="GeoJSON para QGIS, kepler.gl o cualquier SIG">
+                <Icon name="download" size={15} /> GeoJSON
+              </button>
+            </div>
+            <div className="cov-note">
+              CSV abre directamente en Excel (separador «;» y codificación UTF-8); el GeoJSON conserva
+              la geometría (puntos y áreas de los incendios y ciclones).
+            </div>
+          </div>
+        )}
 
         {/* --------------------------------------------------------- leyenda */}
         <div className="section">

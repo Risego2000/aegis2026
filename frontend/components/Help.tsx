@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { Icon } from "@/components/Icon";
 
 type Props = {
   open: boolean;
@@ -30,14 +31,14 @@ export default function Help({ open, onClose, onOpenLayers, hours }: Props) {
               Inteligencia de fuentes abiertas en tiempo real · todo lo que ves viene de datos públicos, sin claves ni pagos
             </div>
           </div>
-          <button className="icon-btn" onClick={onClose} aria-label="Cerrar la guía">✕</button>
+          <button className="icon-btn" onClick={onClose} aria-label="Cerrar la guía"><Icon name="close" size={16} /></button>
         </div>
 
         <div className="help-body">
           <h3>En diez segundos</h3>
           <div className="help-grid">
             <div className="help-card">
-              <h4>◎ El mapa</h4>
+              <h4><Icon name="grid" size={17} /> El mapa</h4>
               <p>
                 Cada punto es un elemento real: un <b>suceso</b> (sismo, incendio, conflicto, protesta),
                 una <b>aeronave</b>, un <b>buque</b>, un <b>satélite</b>, una <b>cámara</b> o un{" "}
@@ -46,7 +47,7 @@ export default function Help({ open, onClose, onOpenLayers, hours }: Props) {
               <p>Pulsa <b>cualquier</b> punto y se abre su ficha a la derecha.</p>
             </div>
             <div className="help-card">
-              <h4>◆ Las fichas</h4>
+              <h4><Icon name="event" size={17} /> Las fichas</h4>
               <p>
                 Cada ficha dice <b>qué</b> ha pasado, <b>dónde</b> (país y región), <b>cuándo</b> (hora
                 local y UTC), con qué <b>gravedad</b> y qué <b>fuentes</b> lo confirman.
@@ -54,22 +55,26 @@ export default function Help({ open, onClose, onOpenLayers, hours }: Props) {
               <p>Si pulsas el mapa en un punto sin nada, verás todo lo que hay alrededor.</p>
             </div>
             <div className="help-card">
-              <h4>▤ Capas y filtros</h4>
+              <h4><Icon name="layers" size={17} /> Capas y filtros</h4>
               <p>
-                El botón de arriba a la izquierda abre el <b>centro de control</b>: capas (con el número
-                de elementos de cada una), categorías, periodo, fondo del mapa y zonas vigiladas.
+                La barra <b>Explorar</b>, sobre el mapa, cambia entre vistas y enciende o apaga capas al
+                instante: sucesos, aeronaves, buques, trenes, cámaras, satélites, aire, lugares y zonas.
               </p>
-              <p>Pulsa cualquier número para ver la lista completa de lo que cuenta.</p>
+              <p>
+                El botón de arriba a la izquierda abre el <b>centro de control</b> completo: capas (con
+                el número de elementos de cada una), categorías, periodo, fondo del mapa y zonas vigiladas.
+                Pulsa cualquier número para ver la lista de lo que cuenta.
+              </p>
             </div>
             <div className="help-card">
-              <h4>✦ Alertas</h4>
+              <h4><Icon name="bell" size={17} /> Alertas</h4>
               <p>
                 Dibuja una <b>zona vigilada</b> y la app te avisa en cuanto una aeronave, un buque o un
                 suceso entra o sale de ella. Sin configuración previa.
               </p>
             </div>
             <div className="help-card">
-              <h4>✈ Aeronaves y buques</h4>
+              <h4><Icon name="plane" size={17} /> Aeronaves y buques</h4>
               <p>
                 Las aeronaves muestran el <b>recorrido</b> (aeropuerto de origen y de destino) cuando la
                 ruta es pública. Los buques muestran su <b>puerto de destino</b> y la hora estimada de
@@ -77,7 +82,7 @@ export default function Help({ open, onClose, onOpenLayers, hours }: Props) {
               </p>
             </div>
             <div className="help-card">
-              <h4>▣ Cámaras de tráfico</h4>
+              <h4><Icon name="camera" size={17} /> Cámaras de tráfico</h4>
               <p>
                 Solo aparecen las redes que publican <b>imagen abierta sin clave</b>: País Vasco, Londres,
                 California, Nueva York y Finlandia.

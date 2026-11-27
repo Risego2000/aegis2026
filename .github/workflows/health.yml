@@ -1,9 +1,10 @@
 name: AEGIS · salud de lo publicado
 
-# El mapa de GitHub Pages no lleva backend dentro: apunta a la URL de la
-# variable AEGIS_API. Si esa URL muere (los túneles gratuitos cambian de
-# subdominio al reconectar), el sitio sigue "publicado" pero sin datos. Este
-# vigilante lo detecta cada 30 minutos en vez de esperar a que alguien mire.
+# El mapa de GitHub Pages no lleva backend dentro: el workflow AEGIS · Pages
+# escribe la URL de AEGIS_API en runtime-config.json. Este vigilante comprueba
+# cada 30 minutos que el fichero publicado no está vacío y que la API a la que
+# apunta responde de verdad. Así una URL muerta se ve en Actions y no se
+# descubre al abrir el mapa.
 
 on:
   schedule:
@@ -22,13 +23,22 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Comprobar la API que usa el sitio
-        env:
-          BASE: ${{ vars.AEGIS_API }}
+
+      - name: Leer la API del runtime-config publicado
         run: |
-          if [ -z "$BASE" ]; then
-            echo "::error::Falta la variable AEGIS_API (Settings → Secrets and variables → Actions → Variables). Sin ella el mapa publicado no puede pedir datos."
+          set -euo pipefail
+          CONFIG=$(curl -fsSL -m 20 -H "Cache-Control: no-cache" \
+            "https://risego2000.github.io/aegis2026/runtime-config.json?ts=$(date +%s)")
+          printf '%s\n' "$CONFIG"
+          SITE_API=$(printf '%s' "$CONFIG" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("api", ""))')
+          if [ -z "$SITE_API" ]; then
+            echo "::error::runtime-config.json del sitio está vacío: el mapa cargará el fondo pero no pedirá datos. Relanza AEGIS · Pages con una AEGIS_API viva."
             exit 1
           fi
-          echo "Comprobando $BASE"
-          python3 scripts/smoke.py
+          echo "API del sitio publicado: $SITE_API"
+          echo "SITE_API=$SITE_API" >> "$GITHUB_ENV"
+
+      - name: Probar la API que usa el sitio
+        run: |
+          set -euo pipefail
+          BASE="$SITE_API" python3 scripts/smoke.py

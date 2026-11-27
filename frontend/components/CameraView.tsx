@@ -12,7 +12,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
-import { fmtNumber, timeAgo } from "@/lib/format";
+import { timeAgo } from "@/lib/format";
+import { Icon } from "@/components/Icon";
+import { PanelHeader, PanelSection, SummaryStrip } from "@/components/PanelUI";
 
 type Props = {
   cameraId: string;
@@ -109,20 +111,28 @@ export default function CameraView({ cameraId, onClose, onFly }: Props) {
 
   return (
     <div>
-      <div className="section" style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="section-title" style={{ marginBottom: 3 }}>Cámara en vivo</div>
-          <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis" }}>
-            {camera?.name ?? cameraId}
-          </div>
-          <div className="tiny faint mono" style={{ marginTop: 2 }}>
-            {camera?.network_label ?? ""}{camera?.place ? ` · ${camera.place}` : ""}
-          </div>
-        </div>
-        <button className="panel-close" style={{ display: "grid" }} onClick={onClose} aria-label="Cerrar cámara">
-          ✕
-        </button>
-      </div>
+      <PanelHeader
+        icon="camera"
+        eyebrow="Cámara pública"
+        title={camera?.name ?? cameraId}
+        subtitle={[camera?.network_label, camera?.place, camera?.route].filter(Boolean).join(" · ") || "Cargando ficha de la cámara…"}
+        tone="var(--violet)"
+        meta={<span>{camera?.operator ?? "red abierta"}</span>}
+        actions={
+          <button className="btn ghost" style={{ display: "grid" }} onClick={onClose} aria-label="Cerrar cámara">
+            <Icon name="close" size={16} />
+          </button>
+        }
+      />
+
+      <SummaryStrip
+        items={[
+          { label: "Señal", value: camera ? (camera.online ? "Sí" : "No") : "—", tone: camera?.online ? "var(--ok)" : undefined, hint: camera?.online ? "La cámara está en servicio" : "La cámara no responde" },
+          { label: "Red", value: camera?.network_label?.split("·")[0]?.trim() ?? "—", hint: camera?.network_label ?? "Red de cámaras" },
+          { label: "Vía", value: camera?.route ?? "—", hint: camera?.place ?? "Ubicación de la cámara" },
+          { label: "Refresco", value: paused ? "Pausa" : `${cadence} s`, hint: "Intervalo de actualización de la imagen" },
+        ]}
+      />
 
       <div className="section" style={{ paddingTop: 0 }}>
         <div className="camera-frame" ref={boxRef}>
@@ -162,7 +172,7 @@ export default function CameraView({ cameraId, onClose, onFly }: Props) {
           <button className={`chip ${paused ? "active" : ""}`} onClick={() => setPaused((v) => !v)}>
             {paused ? "▶ reanudar" : "❚❚ pausar"}
           </button>
-          <button className="chip" onClick={reload}>↻ ahora</button>
+          <button className="chip" onClick={reload}><Icon name="refresh" size={14} /> ahora</button>
         </div>
         {direct && (
           <div className="tiny faint" style={{ marginTop: 6 }}>
@@ -177,32 +187,21 @@ export default function CameraView({ cameraId, onClose, onFly }: Props) {
               ? `último fotograma hace ${timeAgo(new Date(loadedAt).toISOString())} · refresco cada ${cadence} s`
               : "cargando fotograma…"}
         </div>
-      </div>
 
-      <div className="section">
-        <div className="section-title">Ficha de la cámara</div>
-        <dl className="kv">
-          {meta.map((row) => (
-            <div key={row.label} style={{ display: "contents" }}>
-              <dt>{row.label}</dt>
-              <dd>{row.value}</dd>
-            </div>
-          ))}
-        </dl>
         <div className="btn-row" style={{ marginTop: 8, flexWrap: "wrap" }}>
           {camera && onFly && (
             <button className="btn" onClick={() => onFly(Number(camera.lat), Number(camera.lon))}>
-              ⊕ Centrar
+              <Icon name="locate" size={15} /> Centrar
             </button>
           )}
           {camera?.image && (
             <a className="btn" href={camera.image} target="_blank" rel="noreferrer">
-              ↗ Original
+              <Icon name="external" size={15} /> Original
             </a>
           )}
           {camera?.source_url && (
             <a className="btn" href={camera.source_url} target="_blank" rel="noreferrer">
-              ↗ Operador
+              <Icon name="external" size={15} /> Operador
             </a>
           )}
           <button
@@ -213,22 +212,26 @@ export default function CameraView({ cameraId, onClose, onFly }: Props) {
             }}
             title="Copiar el enlace del fotograma"
           >
-            ⧉ Enlace
+            <Icon name="copy" size={15} /> Enlace
           </button>
         </div>
+      </div>
+
+      <PanelSection title="Ficha de la cámara" count={camera?.network_label} hint="Ubicación, catálogo y estado">
+        <dl className="kv">
+          {meta.map((row) => (
+            <div key={row.label} style={{ display: "contents" }}>
+              <dt>{row.label}</dt>
+              <dd>{row.value}</dd>
+            </div>
+          ))}
+        </dl>
         <div className="tiny faint" style={{ marginTop: 8 }}>
           Imagen servida por el operador público ({camera?.operator ?? "red abierta"}) y reenviada por
           el backend de AEGIS para evitar contenido mixto. Sin grabación: solo el fotograma actual.
         </div>
-      </div>
+      </PanelSection>
 
-      <div className="section" style={{ borderBottom: "none" }}>
-        <div className="section-title">Red</div>
-        <div className="tiny faint">
-          Cámaras abiertas indexadas: <strong className="mono">{fmtNumber(camera?.network_total)}</strong>
-          {" "}en total. Pulsa sobre otra cámara del mapa para cambiar de objetivo sin cerrar el visor.
-        </div>
-      </div>
     </div>
   );
 }

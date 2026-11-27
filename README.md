@@ -15,7 +15,7 @@ estático en GitHub Pages apuntando a la API desde la variable `AEGIS_API`.
 | **Sucesos OSINT** | terremotos, desastres, incendios, conflicto, protestas, diplomacia, economía, tráfico | USGS, EMSC, GDACS, EONET, NASA FIRMS, GDELT, NWS, DGT, Renfe |
 | **Aeronaves** | ADS-B, con clase militar/oficial detectada | adsb.lol, adsb.fi |
 | **Buques** | AIS | Digitraffic (Finlandia) |
-| **Trenes** | cercanías, media y larga distancia, alta velocidad y bajo coste | Renfe GTFS-RT, Amtrak |
+| **Trenes** | cercanías, media y larga distancia, alta velocidad y bajo coste | Renfe GTFS-RT, FGC GTFS-RT, Amtrak |
 | **Satélites** | propagados con SGP4 desde TLE | Celestrak (vía espejo) |
 | **Cámaras** | 8 797 cámaras de tráfico de 4 países | DGT, Madrid, Euskadi, SCT, Caltrans, NYC, TfL, Digitraffic |
 | **Calidad del aire** | 5 089 sensores | Sensor.Community |
@@ -78,8 +78,9 @@ make smoke     # 29 comprobaciones contra un servidor en marcha
   push y en cada PR.
 - `scripts/smoke.py`: 29 comprobaciones contra una instancia real (capas, GTFS,
   fotograma de cámara, exportaciones y guarda de ingesta).
-- `AEGIS · salud de lo publicado` sondea cada 30 minutos la API que usa el sitio
-  de GitHub Pages (`vars.AEGIS_API`) y se pone en rojo si no responde.
+- `AEGIS · salud de lo publicado` lee el `runtime-config.json` del sitio y
+  sondea cada 30 minutos la API a la que apunta; se pone en rojo si el fichero
+  está vacío o la API no responde.
 
 ### Repuntar la API sin recompilar
 
@@ -94,25 +95,31 @@ El cliente resuelve el origen de la API en este orden:
 4. Nada: rutas relativas contra el mismo origen.
 
 En el fichero, `"api": ""` significa «sin opinión» y se respeta el valor de
-compilación. El prefijo del sitio (`NEXT_BASE_PATH`) se aplica también al
-manifest, al icono y al service worker, que antes se pedían a la raíz y daban
-404 en GitHub Pages.
+compilación. En GitHub Pages el workflow **AEGIS · Pages** reescribe ese fichero
+con `AEGIS_API` antes de compilar, comprueba que `/api/health` responde y no
+publica si la URL falta o está muerta. También acepta el input manual `api_url`
+para repuntar una publicación sin cambiar la variable. El prefijo del sitio
+(`NEXT_BASE_PATH`) se aplica también al manifest, al icono y al service worker,
+que antes se pedían a la raíz y daban 404 en GitHub Pages.
 
 ## Despliegue
 
 | Pieza | Dónde | Cómo |
 |---|---|---|
-| **Cliente** (mapa) | GitHub Pages · `https://risego2000.github.io/aegis2026/` | workflow `AEGIS · Pages`, se compila con `NEXT_BASE_PATH=/aegis2026`; la API se puede repuntar después con `runtime-config.json` o `?api=` |
+| **Cliente** (mapa) | GitHub Pages · `https://risego2000.github.io/aegis2026/` | workflow `AEGIS · Pages`, se compila con `NEXT_BASE_PATH=/aegis2026` y escribe `runtime-config.json` desde `AEGIS_API`; se puede repuntar con `?api=` o relanzando el workflow con `api_url` |
 | **API** (motor OSINT) | tu servidor o un túnel | `cd backend && python3 -m uvicorn app.main:app --port 8000` |
 
 El cliente publicado necesita saber dónde está la API: se configura en
 *Settings → Secrets and variables → Actions → **Variables** → `AEGIS_API`* con la
 URL pública del backend (por ejemplo `https://tu-tunel.trycloudflare.com`). Al
 cambiar la variable, lanza el workflow **AEGIS · Pages** (`workflow_dispatch`) y
-el sitio se recompila apuntando a la nueva URL. Si el backend cambia de sitio
-sin querer recompilar, `runtime-config.json` (o un `?api=` en la URL) lo repunta
-en caliente. Sin variable ni fichero, el sitio carga la interfaz y muestra el
-aviso de que la API no responde.
+el sitio se recompila apuntando a la nueva URL: el workflow escribe esa URL en
+`runtime-config.json` y verifica que la API responde antes de publicar. Para una
+publicación puntual, el mismo workflow acepta el input **`api_url`**, que tiene
+prioridad sobre la variable sin tocar la configuración del repositorio. Si el
+backend cambia de sitio sin querer recompilar, un `?api=` en la URL lo repunta
+solo para ese navegador. Sin una URL viva, Pages no publica una versión nueva y
+la salud de lo publicado se pone en rojo.
 
 El backend ya envía `Access-Control-Allow-Origin: *` (configurable con
 `CORS_ORIGINS`), así que no hace falta tocar nada más.
@@ -138,8 +145,8 @@ frontend/
   components/MapView.tsx   motor del mapa (MapLibre), capas e iconos
   components/RightPanel.tsx fichas: suceso, elemento, cámara, lugar, amenazas
   lib/api.ts            cliente HTTP y origen de la API en tiempo de ejecución
-  lib/mapIcons.ts           los 16 iconos dibujados en canvas
-  public/runtime-config.json  origen de la API sin recompilar
+  lib/mapIcons.ts           siluetas de capas y categorías dibujadas en canvas
+  public/runtime-config.json  origen de la API (Pages lo reescribe desde AEGIS_API)
 scripts/
   fetch_geo.py         descarga y prepara la cartografía base
   smoke.py             29 comprobaciones de humo contra un servidor
@@ -167,8 +174,9 @@ MIT. Los datos pertenecen a sus fuentes y se usan según sus términos abiertos.
 El sitio de GitHub Pages es solo el cliente: para que el mapa tenga datos hace
 falta ejecutar la API. `Dockerfile`, `docker-compose.yml`, `fly.toml` y
 `render.yaml` la empaquetan en un contenedor (FastAPI + cliente estático +
-SQLite en un volumen) y el cliente se puede repuntar sin recompilar con
-`?api=` o `frontend/public/runtime-config.json`.
+SQLite en un volumen). El workflow de Pages escribe la URL en
+`frontend/public/runtime-config.json` antes de compilar y no publica si esa API
+no responde; para una prueba inmediata, `?api=` repunta solo tu navegador.
 
 Guía completa, variables y endpoints nuevos: [DEPLOY.md](DEPLOY.md).
 

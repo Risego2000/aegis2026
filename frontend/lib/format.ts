@@ -1,21 +1,23 @@
-export const CATEGORY_META: Record<string, { label: string; color: string; icon: string }> = {
-  earthquake: { label: "Sismos", color: "#ff7a45", icon: "◉" },
-  disaster: { label: "Desastres", color: "#ff3d71", icon: "▲" },
-  wildfire: { label: "Incendios", color: "#ffb703", icon: "✹" },
-  conflict: { label: "Conflicto", color: "#ff2d2d", icon: "⚔" },
-  protest: { label: "Protestas", color: "#b388ff", icon: "✊" },
-  military: { label: "Militar", color: "#4dd0e1", icon: "✈" },
-  diplomacy: { label: "Diplomacia", color: "#64b5f6", icon: "◈" },
-  economy: { label: "Economía", color: "#a5d6a7", icon: "⬢" },
-  news: { label: "Noticias", color: "#90a4ae", icon: "◌" },
-  health: { label: "Salud", color: "#69f0ae", icon: "✚" },
-  weather: { label: "Meteorología", color: "#4fc3f7", icon: "☁" },
-  flood: { label: "Inundación", color: "#4dd0e1", icon: "≈" },
-  volcano: { label: "Volcán", color: "#ff8a65", icon: "▲" },
-  cyber: { label: "Ciberataque", color: "#ce93d8", icon: "⌘" },
-  trafico: { label: "Tráfico", color: "#ffd166", icon: "⛗" },
-  transporte: { label: "Transporte", color: "#ffb454", icon: "⛉" },
-  network: { label: "Red / Internet", color: "#7c9cff", icon: "⌁" },
+import type { IconName } from "@/components/Icon";
+
+export const CATEGORY_META: Record<string, { label: string; color: string; icon: IconName }> = {
+  earthquake: { label: "Sismos", color: "#ff7a45", icon: "earthquake" },
+  disaster: { label: "Desastres", color: "#ff3d71", icon: "disaster" },
+  wildfire: { label: "Incendios", color: "#ffb703", icon: "wildfire" },
+  conflict: { label: "Conflicto", color: "#ff2d2d", icon: "conflict" },
+  protest: { label: "Protestas", color: "#b388ff", icon: "protest" },
+  military: { label: "Militar", color: "#4dd0e1", icon: "military" },
+  diplomacy: { label: "Diplomacia", color: "#64b5f6", icon: "diplomacy" },
+  economy: { label: "Economía", color: "#a5d6a7", icon: "economy" },
+  news: { label: "Noticias", color: "#90a4ae", icon: "news" },
+  health: { label: "Salud", color: "#69f0ae", icon: "health" },
+  weather: { label: "Meteorología", color: "#4fc3f7", icon: "weather" },
+  flood: { label: "Inundación", color: "#4dd0e1", icon: "flood" },
+  volcano: { label: "Volcán", color: "#ff8a65", icon: "volcano" },
+  cyber: { label: "Ciberataque", color: "#ce93d8", icon: "cyber" },
+  trafico: { label: "Tráfico", color: "#ffd166", icon: "traffic" },
+  transporte: { label: "Transporte", color: "#ffb454", icon: "transport" },
+  network: { label: "Red / Internet", color: "#7c9cff", icon: "network" },
 };
 
 /** Qué significa cada categoría, para explicarlo dentro de la ficha. */
@@ -35,7 +37,7 @@ export const CATEGORY_DESC: Record<string, string> = {
   weather: "Avisos meteorológicos severos y episodios de tiempo extremo.",
   health: "Brotes, alertas sanitarias y emergencias de salud pública.",
   trafico: "Incidencia de tráfico en tiempo real publicada por la DGT (DATEX II): accidentes, obras, cortes, obstáculos y restricciones, con carretera y punto kilométrico.",
-  transporte: "Aviso de servicio de un operador de transporte público (Renfe): reajustes, obras y cancelaciones que afectan a una línea.",
+  transporte: "Aviso de servicio de un operador de transporte público (Renfe y otros): reajustes, obras y cancelaciones que afectan a una línea.",
   network: "Caída de alcanzabilidad de internet medida por IODA (Georgia Tech) con tres señales independientes: BGP, sondas activas y telescopio de red. No es una denuncia: es una medición por país.",
 };
 
@@ -109,7 +111,9 @@ export function fmtDistance(m: number): string {
 }
 
 export function categoryMeta(cat: string) {
-  return CATEGORY_META[cat] ?? { label: cat, color: "#8ea0b5", icon: "•" };
+  if (cat === "traffic") return CATEGORY_META.trafico;
+  if (cat === "transport") return CATEGORY_META.transporte;
+  return CATEGORY_META[cat] ?? { label: cat, color: "#8ea0b5", icon: "pin" };
 }
 
 /** Minimal markdown renderer (headings, bold, italics, lists, hr, links) —

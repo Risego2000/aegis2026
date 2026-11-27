@@ -8,6 +8,8 @@ import ActorCard from "@/components/ActorCard";
 import AnalystPanel from "@/components/AnalystPanel";
 import CameraView from "@/components/CameraView";
 import PlacePanel, { type PlaceData } from "@/components/PlacePanel";
+import { PanelHeader, PanelSection, SummaryStrip } from "@/components/PanelUI";
+import { Icon, type IconName } from "@/components/Icon";
 import {
   CATEGORY_DESC, categoryMeta, esError, fechaExacta, fmtDistance, fmtNumber, markdownToHtml,
   SEVERITY_COLOR as severityColor, sourceEs, timeAgo,
@@ -72,16 +74,16 @@ type Props = {
   onThreatWindow: (h: number) => void;
 };
 
-const TABS: { key: Tab; label: string; icon: string; hint: string }[] = [
-  { key: "place", label: "Lugar", icon: "◎", hint: "Todo lo que hay alrededor del punto que has pulsado" },
-  { key: "threats", label: "Amenazas", icon: "⚠", hint: "Sucesos que amenazan a la población o generan alarma, ordenados por prioridad" },
-  { key: "detail", label: "Suceso", icon: "◆", hint: "Ficha completa del suceso seleccionado" },
-  { key: "actor", label: "Elemento", icon: "✈", hint: "Avión, barco o satélite seleccionado" },
-  { key: "camera", label: "Cámara", icon: "▣", hint: "Visor de la cámara pública seleccionada" },
-  { key: "briefing", label: "Informe", icon: "▤", hint: "Informe redactado con los datos de la zona" },
-  { key: "alerts", label: "Alertas", icon: "✦", hint: "Avisos de las zonas vigiladas" },
-  { key: "sources", label: "Fuentes", icon: "⇄", hint: "Estado y detalle de las 25 fuentes abiertas" },
-  { key: "analyst", label: "Analista", icon: "⌘", hint: "SITREP, patrones, casos con cadena de custodia, grafo y reproducción" },
+const TABS: { key: Tab; label: string; icon: IconName; hint: string }[] = [
+  { key: "place", label: "Lugar", icon: "pin", hint: "Todo lo que hay alrededor del punto que has pulsado" },
+  { key: "threats", label: "Amenazas", icon: "warning", hint: "Sucesos que amenazan a la población o generan alarma, ordenados por prioridad" },
+  { key: "detail", label: "Suceso", icon: "event", hint: "Ficha completa del suceso seleccionado" },
+  { key: "actor", label: "Elemento", icon: "plane", hint: "Avión, barco o satélite seleccionado" },
+  { key: "camera", label: "Cámara", icon: "camera", hint: "Visor de la cámara pública seleccionada" },
+  { key: "briefing", label: "Informe", icon: "report", hint: "Informe redactado con los datos de la zona" },
+  { key: "alerts", label: "Alertas", icon: "bell", hint: "Avisos de las zonas vigiladas" },
+  { key: "sources", label: "Fuentes", icon: "sources", hint: "Estado y detalle de las 25 fuentes abiertas" },
+  { key: "analyst", label: "Analista", icon: "analyst", hint: "SITREP, patrones, casos con cadena de custodia, grafo y reproducción" },
 ];
 
 export default function RightPanel(p: Props) {
@@ -109,6 +111,56 @@ export default function RightPanel(p: Props) {
     [p.alerts, onlyCritical]
   );
 
+  const criticalAlerts = p.alerts.filter((a) => a.severity === "critical").length;
+  const ruleAlerts = p.alerts.filter((a) => a.event_type === "rule").length;
+
+  const sourceList = p.health?.ingest.sources ?? [];
+  const failingSources = sourceList.filter((s) => !s.ok);
+  const healthySources = sourceList.filter((s) => s.ok);
+  const sourceItems = sourceList.reduce((sum, s) => sum + (s.items ?? 0), 0);
+  const sourceAvgMs = sourceList.length
+    ? Math.round(sourceList.reduce((sum, s) => sum + (s.duration_ms ?? 0), 0) / sourceList.length)
+    : 0;
+  const sourceLatency = sourceAvgMs >= 1000 ? `${(sourceAvgMs / 1000).toFixed(1)} s` : `${sourceAvgMs} ms`;
+
+  const renderSource = (s: SourceStatus) => (
+    <div key={s.name} style={{ padding: "9px 0", borderBottom: "1px solid var(--line-soft)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span className={`status-dot ${s.ok ? "ok" : "err"}`} />
+        <span style={{ fontWeight: 600, fontSize: 12 }}>{s.source ?? s.name}</span>
+        <span className="mono tiny faint" style={{ marginLeft: "auto" }}>{s.interval_s}s</span>
+        <button
+          className="chip"
+          onClick={() => p.onTriggerSource(s.name)}
+          disabled={p.triggering === s.name}
+          title="Ejecutar esta fuente ahora"
+        >
+          {p.triggering === s.name ? <span className="spinner" /> : "ejecutar"}
+        </button>
+      </div>
+      <div className="tiny faint" style={{ marginTop: 3 }}>{s.description}</div>
+      <div className="source-msg" style={{ marginTop: 3 }}>
+        <button
+          className="num-link"
+          title={`Ver los ${s.items} elementos de ${s.source ?? s.name}`}
+          onClick={() => p.onBreakdownSource(s)}
+        >
+          {fmtNumber(s.items)} elem.
+        </button>{" "}
+        · {s.duration_ms} ms · {s.failures} fallos ·{" "}
+        {s.last_run ? `hace ${timeAgo(s.last_run)}` : "pendiente"}
+      </div>
+      <div className="source-msg" style={{ color: s.ok ? "var(--text-faint)" : "var(--danger)" }}>
+        {esError(s.message)}
+      </div>
+      {s.key_optional && (
+        <div className="tiny faint" style={{ marginTop: 3 }}>
+          sin clave: {s.mode ?? "csv-global"} · MAP_KEY opcional para recorte por área
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <aside className={`panel right ${p.open ? "open" : ""}`}>
       <button className="sheet-grip" onClick={() => p.onClose?.()} aria-label="Cerrar panel" />
@@ -122,14 +174,14 @@ export default function RightPanel(p: Props) {
             aria-label={t.label}
             aria-current={p.tab === t.key ? "page" : undefined}
           >
-            <span className="tab-ico" aria-hidden="true">{t.icon}</span>
+            <span className="tab-ico" aria-hidden="true"><Icon name={t.icon} size={16} /></span>
             {/* rail de iconos: la etiqueta solo se despliega en la pestaña activa,
                 así nueve secciones caben sin scroll en un panel de 404 px */}
             <span className="tab-label">{t.label}</span>
             {t.key === "alerts" && p.alertsCount > 0 && <span className="tab-badge">{p.alertsCount > 99 ? "99+" : p.alertsCount}</span>}
           </button>
         ))}
-        <button className="panel-close" onClick={() => p.onClose?.()} aria-label="Cerrar" style={{ marginLeft: "auto" }}>✕</button>
+        <button className="panel-close" onClick={() => p.onClose?.()} aria-label="Cerrar" style={{ marginLeft: "auto" }}><Icon name="close" size={16} /></button>
       </div>
 
       <div className="panel-body">
@@ -149,7 +201,7 @@ export default function RightPanel(p: Props) {
           p.cameraId
             ? <CameraView cameraId={p.cameraId} onClose={p.onClearCamera} onFly={p.onFlyTo} />
             : <div className="empty">
-                <span className="empty-ico" aria-hidden="true">▣</span>
+                <span className="empty-ico" aria-hidden="true"><Icon name="camera" size={30} /></span>
                 <strong>Ninguna cámara seleccionada</strong>
                 Pulsa un punto violeta del mapa (capa «Cámaras de tráfico») y aquí verás su imagen
                 en directo, el nombre de la vía y la hora de la última instantánea.
@@ -184,46 +236,63 @@ export default function RightPanel(p: Props) {
             onPickEvent={p.onPickPlaceEvent}
             onPickCamera={p.onPickPlaceCamera}
             onPickActor={p.onPickPlaceActor}
+            onExploreThreats={() => p.setTab("threats")}
+            onExploreSources={() => p.setTab("sources")}
           />
         )}
 
         {p.tab === "briefing" && (
           <div>
-            <div className="section" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <div className="section-title" style={{ marginBottom: 3 }}>Informe de situación</div>
-                <div className="tiny faint">
-                  {p.briefing
-                    ? `${p.briefing.event_count} eventos · ${p.briefing.provider} · ${timeAgo(p.briefing.generated_at)}`
-                    : "RAG sobre la ventana actual del mapa"}
-                </div>
-              </div>
-              <div className="btn-row">
-                <button className="btn primary" onClick={p.onGenerateBriefing} disabled={p.briefingLoading}>
-                  {p.briefingLoading ? <span className="spinner" /> : "▶"} Generar
-                </button>
-                {p.briefing && (
-                  <button className="btn" onClick={p.onDownloadBriefing} title="Exportar markdown">
-                    ↓ .md
+            <PanelHeader
+              icon="report"
+              eyebrow="Informe"
+              title="Informe de situación"
+              subtitle="Resumen redactado con los sucesos de la zona visible y la referencia de cada frase."
+              meta={
+                <>
+                  {p.briefing ? <span>{p.briefing.event_count} eventos</span> : <span>RAG sobre la ventana actual</span>}
+                  {p.briefing ? <span>{timeAgo(p.briefing.generated_at)}</span> : null}
+                </>
+              }
+              actions={
+                <div className="btn-row">
+                  <button className="btn primary" onClick={p.onGenerateBriefing} disabled={p.briefingLoading}>
+                    {p.briefingLoading ? <span className="spinner" /> : "▶"} Generar
                   </button>
-                )}
-              </div>
-            </div>
+                  {p.briefing && (
+                    <button className="btn" onClick={p.onDownloadBriefing} title="Exportar markdown">
+                      <Icon name="download" size={15} /> .md
+                    </button>
+                  )}
+                </div>
+              }
+            />
+
+            {p.briefing && (
+              <SummaryStrip
+                items={[
+                  { label: "Eventos", value: p.briefing.event_count, hint: "Sucesos incluidos en el informe" },
+                  { label: "Fuentes citadas", value: p.briefing.citations.length, hint: "Referencias verificables" },
+                  { label: "Proveedor", value: p.briefing.provider, hint: "Modelo que redactó el informe" },
+                  { label: "Generado", value: timeAgo(p.briefing.generated_at), hint: "Hora de generación" },
+                ]}
+              />
+            )}
 
             {p.config?.ai && (
-              <div className="section" style={{ paddingTop: 8, paddingBottom: 8 }}>
+              <PanelSection title="Modelo y proveedor" count={p.config.ai.available ? "listo" : "fallback"} hint={p.config.ai.provider}>
                 <div className="source-row" style={{ padding: 0 }}>
                   <span className={`status-dot ${p.config.ai.available ? "ok" : "warn"}`} />
                   <span className="source-name mono tiny">{p.config.ai.provider} / {p.config.ai.model}</span>
                   <span className="source-meta">{p.config.ai.available ? "listo" : "fallback"}</span>
                 </div>
                 <div className="tiny faint" style={{ marginTop: 4 }}>{p.config.ai.detail}</div>
-              </div>
+              </PanelSection>
             )}
 
             {!p.briefing && !p.briefingLoading && (
               <div className="empty">
-                <span className="empty-ico" aria-hidden="true">▤</span>
+                <span className="empty-ico" aria-hidden="true"><Icon name="report" size={30} /></span>
                 <strong>Aún no hay informe</strong>
                 Pulsa «Generar» y se redactará un informe con los sucesos de la zona visible:
                 resumen, hechos principales, patrón detectado y qué falta por vigilar. Cada frase
@@ -246,8 +315,12 @@ export default function RightPanel(p: Props) {
             )}
 
             {p.briefing && p.briefing.citations.length > 0 && (
-              <div className="section" style={{ borderTop: "1px solid var(--border)" }}>
-                <div className="section-title">Fuentes citadas</div>
+              <PanelSection
+                title="Fuentes citadas"
+                count={p.briefing.citations.length}
+                hint="Cada referencia abre el suceso"
+                defaultOpen
+              >
                 {p.briefing.citations.slice(0, 12).map((c) => (
                   <div className="event-row" key={c.id} onClick={() => p.onSelectById(c.id)}>
                     <span className="event-dot" style={{ background: categoryMeta(c.category).color }} />
@@ -258,7 +331,7 @@ export default function RightPanel(p: Props) {
                     </div>
                   </div>
                 ))}
-              </div>
+              </PanelSection>
             )}
           </div>
         )}
@@ -267,18 +340,30 @@ export default function RightPanel(p: Props) {
 
         {p.tab === "alerts" && (
           <div>
-            <div className="section" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div className="section-title" style={{ marginBottom: 0 }}>
-                Avisos de zonas vigiladas
-              </div>
-              <button className={`chip ${onlyCritical ? "active" : ""}`} onClick={() => setOnlyCritical(!onlyCritical)}>
-                solo críticas
-              </button>
-            </div>
-            <div className="section" style={{ paddingTop: 8 }}>
+            <PanelHeader
+              icon="bell"
+              eyebrow="Zonas vigiladas"
+              title="Avisos"
+              subtitle="Entradas y salidas de aeronaves, buques o sucesos en las zonas que has dibujado."
+              meta={<span>{p.alerts.length} avisos guardados</span>}
+              actions={
+                <button className={`chip ${onlyCritical ? "active" : ""}`} onClick={() => setOnlyCritical(!onlyCritical)}>
+                  solo críticas
+                </button>
+              }
+            />
+            <SummaryStrip
+              items={[
+                { label: "Avisos", value: p.alerts.length, hint: "Total de avisos guardados" },
+                { label: "Críticas", value: criticalAlerts, tone: criticalAlerts ? "var(--danger)" : undefined, hint: "Avisos de máxima prioridad" },
+                { label: "Reglas", value: ruleAlerts, hint: "Avisos generados por una regla" },
+                { label: "Visibles", value: filteredAlerts.length, hint: "Avisos visibles con el filtro actual" },
+              ]}
+            />
+            <div className="pn-tools" style={{ paddingTop: 8, paddingBottom: 4 }}>
               {filteredAlerts.length === 0 && (
                 <div className="empty">
-                  <span className="empty-ico" aria-hidden="true">✦</span>
+                  <span className="empty-ico" aria-hidden="true"><Icon name="bell" size={30} /></span>
                   <strong>Todavía no hay avisos</strong>
                   Dibuja una zona vigilada en el panel de capas: en cuanto una aeronave, un buque o
                   un suceso entre o salga de ella, aparecerá aquí al instante.
@@ -305,48 +390,59 @@ export default function RightPanel(p: Props) {
 
         {p.tab === "sources" && (
           <div>
-            <div className="section">
-              <div className="section-title">Estado de los pipelines</div>
-              {(p.health?.ingest.sources ?? []).map((s) => (
-                <div key={s.name} style={{ padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span className={`status-dot ${s.ok ? "ok" : "err"}`} />
-                    <span style={{ fontWeight: 600, fontSize: 12 }}>{s.source ?? s.name}</span>
-                    <span className="mono tiny faint" style={{ marginLeft: "auto" }}>{s.interval_s}s</span>
-                    <button
-                      className="chip"
-                      onClick={() => p.onTriggerSource(s.name)}
-                      disabled={p.triggering === s.name}
-                    >
-                      {p.triggering === s.name ? <span className="spinner" /> : "ejecutar"}
-                    </button>
-                  </div>
-                  <div className="tiny faint" style={{ marginTop: 3 }}>{s.description}</div>
-                  <div className="source-msg" style={{ marginTop: 3 }}>
-                    <button
-                      className="num-link"
-                      title={`Ver los ${s.items} elementos de ${s.source ?? s.name}`}
-                      onClick={() => p.onBreakdownSource(s)}
-                    >
-                      {fmtNumber(s.items)} elem.
-                    </button>{" "}
-                    · {s.duration_ms} ms · {s.failures} fallos ·{" "}
-                    {s.last_run ? `hace ${timeAgo(s.last_run)}` : "pendiente"}
-                  </div>
-                  <div className="source-msg" style={{ color: s.ok ? "var(--text-faint)" : "var(--danger)" }}>
-                    {esError(s.message)}
-                  </div>
-                  {s.key_optional && (
-                    <div className="tiny faint" style={{ marginTop: 3 }}>
-                      sin clave: {s.mode ?? "csv-global"} · MAP_KEY opcional para recorte por área
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+            <PanelHeader
+              icon="sources"
+              eyebrow="Fuentes abiertas"
+              title="Estado de las fuentes"
+              subtitle="Qué pipelines responden, cuánto tardan y qué aporta cada uno. Las que fallan se agrupan arriba."
+              meta={
+                <>
+                  <span>{sourceList.length} fuentes</span>
+                  {p.health ? <span>{Math.round(p.health.ingest.uptime_s / 60)} min activo</span> : null}
+                </>
+              }
+            />
 
-            <div className="section">
-              <div className="section-title">Motor y almacenamiento</div>
+            <SummaryStrip
+              items={[
+                {
+                  label: "Operativas",
+                  value: `${healthySources.length}/${sourceList.length}`,
+                  tone: failingSources.length ? "var(--warn)" : "var(--ok)",
+                  hint: "Fuentes que responden ahora",
+                },
+                {
+                  label: "Con error",
+                  value: failingSources.length,
+                  tone: failingSources.length ? "var(--danger)" : undefined,
+                  hint: "Fuentes que necesitan revisión",
+                },
+                { label: "Elementos", value: fmtNumber(sourceItems), hint: "Elementos aportados en la última ingesta" },
+                { label: "Tiempo", value: sourceLatency, hint: "Duración media de la última ingesta" },
+              ]}
+            />
+
+            {failingSources.length > 0 && (
+              <PanelSection
+                title="Requieren atención"
+                count={failingSources.length}
+                hint="Errores de la última ingesta"
+                defaultOpen
+              >
+                {failingSources.map(renderSource)}
+              </PanelSection>
+            )}
+
+            <PanelSection
+              title="Fuentes operativas"
+              count={healthySources.length}
+              hint="Responden con normalidad"
+              defaultOpen={failingSources.length === 0}
+            >
+              {healthySources.map(renderSource)}
+            </PanelSection>
+
+            <PanelSection title="Motor y almacenamiento" hint="Infraestructura de datos">
               <dl className="kv">
                 <dt>Storage</dt><dd>{p.health?.storage.backend}</dd>
                 <dt>Eventos</dt><dd>{fmtNumber(p.health?.storage.events)}</dd>
@@ -358,10 +454,9 @@ export default function RightPanel(p: Props) {
                 <dt>Objetos</dt><dd>{fmtNumber(p.health?.fence.tracked_objects)} rastreados</dd>
                 <dt>Uptime</dt><dd>{p.health ? `${Math.round(p.health.ingest.uptime_s / 60)} min` : "—"}</dd>
               </dl>
-            </div>
+            </PanelSection>
 
-            <div className="section">
-              <div className="section-title">Alertas por tipo</div>
+            <PanelSection title="Alertas por tipo" count={Object.keys(p.health?.fence.counters ?? {}).length} hint="Contadores de las zonas vigiladas">
               <dl className="kv">
                 {Object.entries(p.health?.fence.counters ?? {}).map(([k, v]) => (
                   <div key={k} style={{ display: "contents" }}>
@@ -369,7 +464,7 @@ export default function RightPanel(p: Props) {
                   </div>
                 ))}
               </dl>
-            </div>
+            </PanelSection>
           </div>
         )}
       </div>
@@ -395,7 +490,7 @@ function EventDetail(p: Props) {
   if (!p.selected) {
     return (
       <div className="empty">
-        <span className="empty-ico" aria-hidden="true">◆</span>
+        <span className="empty-ico" aria-hidden="true"><Icon name="event" size={30} /></span>
         <strong>Ningún suceso seleccionado</strong>
         Pulsa un punto del mapa (o cualquier fila de una lista) y aquí aparecerá su ficha: qué ha
         pasado, dónde, cuándo, con qué gravedad y qué fuentes lo confirman.
@@ -429,84 +524,89 @@ function EventDetail(p: Props) {
   return (
     <div>
       <div className="detail">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 8 }}>
-          <div className="detail-meta" style={{ marginBottom: 6 }}>
-            <span className="badge solid" style={{ background: meta.color }}>{meta.icon} {meta.label}</span>
-            {severityText && (
-              <span className="badge" style={{ color: severityColorHex, borderColor: severityColorHex }}>
-                Gravedad {severityText}
-              </span>
-            )}
-            <span className="badge">{sourceEs(ev.source)}</span>
-          </div>
-          <button className="faint detail-close" onClick={p.onClearSelection} title="Cerrar la ficha">✕</button>
+        <div className="detail-meta" style={{ marginBottom: 8 }}>
+          <span className="badge solid" style={{ background: meta.color }}><Icon name={meta.icon} size={14} /> {meta.label}</span>
+          {severityText && (
+            <span className="badge" style={{ color: severityColorHex, borderColor: severityColorHex }}>
+              Gravedad {severityText}
+            </span>
+          )}
+          <span className="badge">{sourceEs(ev.source)}</span>
+          <button className="faint detail-close" style={{ marginLeft: "auto" }} onClick={p.onClearSelection} title="Cerrar la ficha"><Icon name="close" size={16} /></button>
         </div>
 
         <h2 className="detail-title">{ev.title}</h2>
 
-        <div className="tiny faint" style={{ marginBottom: 11, lineHeight: 1.6 }}>
-          {when.local} · hace {timeAgo(ev.event_time)}
-          <br />
-          {sourceList.length > 1
-            ? `Confirmado por ${sourceList.length} fuentes`
-            : "Una sola fuente"} · {ev.mentions ?? 1} menciones
+        <div className="pn-meta" style={{ marginBottom: 10 }}>
+          <span>{when.local}</span>
+          <span>hace {timeAgo(ev.event_time)}</span>
+          <span>{country || "sin país"}</span>
+          <span>{sourceList.length > 1 ? `${sourceList.length} fuentes` : "una fuente"} · {ev.mentions ?? 1} menciones</span>
         </div>
 
-        <EventPhoto eventId={String(ev.id ?? "")} />
-
         {ev.summary && (
-          <p style={{ fontSize: 12.5, lineHeight: 1.6, color: "var(--text-dim)", marginTop: 0, marginBottom: 13 }}>
-            {ev.summary}
-          </p>
+          <p className="detail-lede" style={{ marginBottom: 12 }}>{ev.summary}</p>
         )}
 
-        <div className="card">
-          <div className="card-title"><span>Datos del suceso</span></div>
+        <SummaryStrip
+          items={[
+            { label: "Gravedad", value: severityText || "sin dato", tone: severityColorHex, hint: "Gravedad calculada del suceso" },
+            { label: "Confianza", value: `${Math.round((ev.confidence ?? 0) * 100)} %`, hint: "Confianza del suceso consolidado" },
+            { label: "Fuentes", value: sourceList.length || 1, hint: "Fuentes que confirman el suceso" },
+          ]}
+        />
+
+        <div className="pn-tools">
+          <div className="btn-row" style={{ flexWrap: "wrap" }}>
+            <button className="btn primary" onClick={p.onGenerateBriefing} disabled={p.briefingLoading}>
+              {p.briefingLoading ? <span className="spinner" /> : <Icon name="report" size={16} />} Informe de la zona
+            </button>
+            {ev.url && (
+              <a className="btn" href={ev.url} target="_blank" rel="noreferrer"><Icon name="external" size={15} /> Abrir la fuente</a>
+            )}
+            {Number.isFinite(evLat) && Number.isFinite(evLon) && (
+              <>
+                <a
+                  className="btn ghost"
+                  href={`https://apps.sentinel-hub.com/eo-browser/?lat=${evLat}&lng=${evLon}&zoom=13`}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="Comparar la imagen de hoy con la de hace 30 días (Sentinel-2, 10 m, gratis)"
+                >
+                  ◭ Sentinel-2
+                </a>
+                <a
+                  className="btn ghost"
+                  href={`https://www.google.com/maps/@${evLat},${evLon},1200m/data=!3m1!1e3`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <Icon name="grid" size={15} /> Satélite
+                </a>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div style={{ padding: "10px 14px 0" }}>
+          <EventPhoto eventId={String(ev.id ?? "")} />
+        </div>
+
+        <PanelSection title="Dónde y cuándo" count={country || "coordenadas"} defaultOpen>
           <dl className="kv">
             <dt>País / región</dt><dd>{country || "sin datos"}</dd>
             <dt>Coordenadas</dt><dd>{Number(ev.lat).toFixed(4)}, {Number(ev.lon).toFixed(4)}</dd>
             <dt>Hora local</dt><dd>{when.local}</dd>
             <dt>Hora UTC</dt><dd>{when.utc}</dd>
             <dt>Categoría</dt><dd>{meta.label}{ev.subtype ? ` · ${ev.subtype}` : ""}</dd>
-            {ev.severity != null && (
-              <><dt>Valor de gravedad</dt><dd>{Number(ev.severity).toLocaleString("es-ES")}</dd></>
-            )}
             {ev.depth_km != null && (
               <><dt>Profundidad</dt><dd>{Number(ev.depth_km).toLocaleString("es-ES", { maximumFractionDigits: 1 })} km</dd></>
             )}
-            <dt>Confianza</dt><dd>{Math.round((ev.confidence ?? 0) * 100)} %</dd>
             <dt>Fuentes</dt><dd>{sourceList.map(sourceEs).join(" · ") || sourceEs(ev.source)}</dd>
-            {admiralty && (
-              <><dt>Grado OTAN</dt><dd title={admiraltyWhy}>{admiralty}{tlp ? ` · TLP:${tlp}` : ""}</dd></>
-            )}
-            <dt>Identificador</dt><dd style={{ fontSize: 9.5 }}>{ev.id}</dd>
           </dl>
-        </div>
+        </PanelSection>
 
-        {Number.isFinite(evLat) && Number.isFinite(evLon) && (
-          <div className="btn-row" style={{ marginBottom: 10 }}>
-            <a
-              className="btn ghost"
-              href={`https://apps.sentinel-hub.com/eo-browser/?lat=${evLat}&lng=${evLon}&zoom=13`}
-              target="_blank"
-              rel="noreferrer"
-              title="Comparar la imagen de hoy con la de hace 30 días (Sentinel-2, 10 m, gratis)"
-            >
-              ◭ Sentinel-2
-            </a>
-            <a
-              className="btn ghost"
-              href={`https://www.google.com/maps/@${evLat},${evLon},1200m/data=!3m1!1e3`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              ◉ Vista satélite
-            </a>
-          </div>
-        )}
-
-        <div className="card">
-          <div className="card-title"><span>Cómo interpretarlo</span></div>
+        <PanelSection title="Cómo interpretarlo" defaultOpen>
           <p style={{ margin: 0, fontSize: 11.5, lineHeight: 1.6, color: "var(--text-dim)" }}>
             {CATEGORY_DESC[ev.category] ?? "Suceso consolidado a partir de varias fuentes abiertas."}
           </p>
@@ -517,25 +617,16 @@ function EventDetail(p: Props) {
               inmediato para la población.
             </p>
           )}
-        </div>
-
-        <div className="btn-row" style={{ marginBottom: 12 }}>
-          <button className="btn primary" onClick={p.onGenerateBriefing} disabled={p.briefingLoading}>
-            {p.briefingLoading ? <span className="spinner" /> : "◈"} Informe de la zona
-          </button>
-          {ev.url && (
-            <a className="btn" href={ev.url} target="_blank" rel="noreferrer">↗ Abrir la fuente</a>
-          )}
-        </div>
+        </PanelSection>
       </div>
 
       {/* corroboración */}
       {p.detail?.mentions && p.detail.mentions.length > 0 && (
-        <div className="section">
-          <div className="section-title">
-            <span>Menciones fusionadas</span>
-            <span className="st-count">{p.detail.mentions.length}</span>
-          </div>
+        <PanelSection
+          title="Menciones fusionadas"
+          count={p.detail.mentions.length}
+          hint="Noticias y avisos unidos en este suceso"
+        >
           <div className="tiny faint" style={{ marginBottom: 7 }}>
             Noticias y avisos que se han unido en este único suceso (misma zona y misma hora).
           </div>
@@ -548,15 +639,19 @@ function EventDetail(p: Props) {
               </div>
             </div>
           ))}
-        </div>
+        </PanelSection>
       )}
 
       {/* proximidad */}
-      <div className="section">
-        <div className="section-title">
-          <span>Población e infraestructura cerca</span>
-          <span className="st-count">{p.nearbyRadiusKn} km</span>
-        </div>
+      <PanelSection
+        title="Población e infraestructura cerca"
+        count={`${p.nearbyRadiusKn} km`}
+        hint={
+          p.nearby
+            ? `${p.nearby.count} núcleos · ${fmtNumber(p.nearby.population_exposed)} hab.`
+            : "Núcleos urbanos y habitantes expuestos"
+        }
+      >
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
           <span className="tiny faint mono">RADIO</span>
           <input
@@ -585,23 +680,39 @@ function EventDetail(p: Props) {
             ))}
           </>
         )}
-      </div>
+      </PanelSection>
 
-      {payload && Object.keys(payload).length > 0 && (
-        <div className="section">
-          <div className="section-title"><span>Datos originales de la fuente</span></div>
-          <pre
-            className="mono code-block"
-            style={{ fontSize: 9.5, maxHeight: 220, overflow: "auto" }}
-          >
-            {JSON.stringify(
-              Object.fromEntries(Object.entries(payload).filter(([k]) => k !== "corroboration")),
-              null,
-              1
-            )}
-          </pre>
-        </div>
-      )}
+      <PanelSection
+        title="Datos técnicos"
+        count={admiralty || "fuente"}
+        hint="Grado OTAN, identificador y datos originales"
+      >
+        <dl className="kv">
+          {ev.severity != null && (
+            <><dt>Valor de gravedad</dt><dd>{Number(ev.severity).toLocaleString("es-ES")}</dd></>
+          )}
+          <dt>Confianza</dt><dd>{Math.round((ev.confidence ?? 0) * 100)} %</dd>
+          {admiralty && (
+            <><dt>Grado OTAN</dt><dd title={admiraltyWhy}>{admiralty}{tlp ? ` · TLP:${tlp}` : ""}</dd></>
+          )}
+          <dt>Identificador</dt><dd style={{ fontSize: 9.5 }}>{ev.id}</dd>
+        </dl>
+        {payload && Object.keys(payload).length > 0 && (
+          <>
+            <div className="section-title" style={{ marginTop: 10 }}>Datos originales de la fuente</div>
+            <pre
+              className="mono code-block"
+              style={{ fontSize: 9.5, maxHeight: 220, overflow: "auto" }}
+            >
+              {JSON.stringify(
+                Object.fromEntries(Object.entries(payload).filter(([k]) => k !== "corroboration")),
+                null,
+                1
+              )}
+            </pre>
+          </>
+        )}
+      </PanelSection>
     </div>
   );
 }
@@ -658,6 +769,29 @@ type ThreatItem = {
   priority: { score: number; level: string; reasons: string[]; population_threat: boolean };
 };
 
+const REASON_ES: Record<string, string> = {
+  disaster: "desastre",
+  earthquake: "sismo",
+  flood: "inundación",
+  wildfire: "incendio",
+  fire: "incendio",
+  conflict: "conflicto",
+  protest: "protesta",
+  traffic: "tráfico",
+  health: "salud",
+  storm: "tormenta",
+  cyclone: "ciclón",
+  volcano: "volcán",
+  military: "militar",
+  economy: "economía",
+  terror: "terrorismo",
+  population: "población",
+};
+
+function reasonEs(reason: string) {
+  return REASON_ES[reason.toLowerCase()] ?? reason;
+}
+
 function ThreatsPanel({ onPick, hourWindow, onWindow }: { onPick: (id: string) => void; hourWindow: number; onWindow: (h: number) => void }) {
   const [items, setItems] = useState<ThreatItem[]>([]);
   const [meta, setMeta] = useState<{ count: number; considered: number; levels: Record<string, number> } | null>(null);
@@ -687,16 +821,30 @@ function ThreatsPanel({ onPick, hourWindow, onWindow }: { onPick: (id: string) =
 
   return (
     <div>
-      <div className="section">
-        <div className="section-title" style={{ marginBottom: 6 }}>
-          Amenaza para la población {loading ? "· actualizando…" : ""}
-        </div>
-        <div className="tiny faint" style={{ lineHeight: 1.55, marginBottom: 8 }}>
-          Sucesos con riesgo para las personas o de interés general, ordenados por prioridad.
-          La puntuación combina categoría, gravedad, corroboración de fuentes y palabras de riesgo
-          del propio titular, y se refresca cada 45 s.
-        </div>
-        <div className="place-window">
+      <PanelHeader
+        icon="warning"
+        eyebrow="Prioridad"
+        title="Amenazas"
+        subtitle="Sucesos con riesgo para las personas, ordenados por gravedad, corroboración y palabras de riesgo del titular."
+        meta={
+          <>
+            <span>{loading ? "actualizando…" : "se refresca cada 45 s"}</span>
+            <span>{minScore === 7.5 ? "solo críticas" : minScore === 5.5 ? "alta o superior" : "media o superior"}</span>
+          </>
+        }
+      />
+
+      <SummaryStrip
+        items={[
+          { label: "Ahora", value: meta?.count ?? items.length, hint: "Sucesos por encima del umbral" },
+          { label: "Crítica", value: meta?.levels["crítica"] ?? 0, tone: "var(--danger)", hint: "Riesgo inmediato para la población" },
+          { label: "Alta", value: meta?.levels["alta"] ?? 0, tone: "var(--warn)", hint: "Riesgo alto" },
+          { label: "Base", value: meta?.considered ?? "—", hint: "Sucesos evaluados en la ventana" },
+        ]}
+      />
+
+      <div className="pn-tools">
+        <div className="pn-tool-row">
           <span className="tiny faint">Ventana</span>
           {[24, 168, 720].map((h) => (
             <button key={h} className={`chip ${hourWindow === h ? "active" : ""}`} onClick={() => onWindow(h)}>
@@ -704,7 +852,7 @@ function ThreatsPanel({ onPick, hourWindow, onWindow }: { onPick: (id: string) =
             </button>
           ))}
         </div>
-        <div className="place-window">
+        <div className="pn-tool-row">
           <span className="tiny faint">Desde</span>
           {[3.5, 5.5, 7.5].map((v) => (
             <button key={v} className={`chip ${minScore === v ? "active" : ""}`} onClick={() => setMinScore(v)}
@@ -713,17 +861,12 @@ function ThreatsPanel({ onPick, hourWindow, onWindow }: { onPick: (id: string) =
             </button>
           ))}
         </div>
-        {meta && (
-          <div className="tiny faint" style={{ marginTop: 8 }}>
-            {meta.count} sucesos sobre {meta.considered} analizados · crítica {meta.levels["crítica"] ?? 0} · alta{" "}
-            {meta.levels["alta"] ?? 0} · media {meta.levels["media"] ?? 0}
-          </div>
-        )}
       </div>
-      <div className="section" style={{ paddingTop: 4 }}>
+
+      <div className="pn-tools" style={{ paddingTop: 8, gap: 0 }}>
         {items.length === 0 && !loading && (
           <div className="empty">
-            <span className="empty-ico" aria-hidden="true">⚠</span>
+            <span className="empty-ico" aria-hidden="true"><Icon name="warning" size={30} /></span>
             <strong>Sin sucesos por encima de ese umbral</strong>
             Baja el nivel («media») o amplía la ventana temporal.
           </div>
@@ -743,8 +886,12 @@ function ThreatsPanel({ onPick, hourWindow, onWindow }: { onPick: (id: string) =
               <span className="threat-meta tiny faint">
                 {it.priority.level} · {it.country || "sin país"} · {timeAgo(it.event_time)} ·{" "}
                 {it.sources_count ?? 1} fuente{(it.sources_count ?? 1) > 1 ? "s" : ""}
-                {it.priority.reasons?.length ? ` · ${it.priority.reasons.join(", ")}` : ""}
               </span>
+              {it.priority.reasons?.length ? (
+                <span className="tiny" style={{ display: "block", marginTop: 3, color: "var(--text-faint)" }}>
+                  Motivos: {it.priority.reasons.map(reasonEs).join(" · ")}
+                </span>
+              ) : null}
             </span>
           </button>
         ))}
