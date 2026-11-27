@@ -1901,8 +1901,8 @@ a { color: var(--accent); text-underline-offset: 2px; }
   }
   .map-tool { width: 44px; height: 44px; border-radius: 9px; }
   .map-legend {
-    display: block; left: 10px; bottom: 76px;
-    max-width: calc(100% - 20px); max-height: 50%; border-radius: 12px;
+    display: block; left: 10px; bottom: 10px;
+    max-width: calc(100% - 150px); max-height: 50%; border-radius: 12px;
   }
   .map-legend summary { min-height: 44px; padding: 0 12px; }
 
