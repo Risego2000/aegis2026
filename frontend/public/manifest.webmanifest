@@ -2,8 +2,8 @@
   "name": "AEGIS · Centro de inteligencia abierta",
   "short_name": "AEGIS",
   "description": "Telemetría global en tiempo real, tráfico, trenes, cámaras y desastres sobre un mapa.",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#04070d",
@@ -11,6 +11,6 @@
   "lang": "es",
   "categories": ["news", "navigation", "utilities"],
   "icons": [
-    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ]
 }

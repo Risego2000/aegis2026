@@ -20,7 +20,7 @@ const AT = (path) => `${BASE}${path}`;
 
 // Súbelo al cambiar el armazón: activate borra las cachés antiguas y evita
 // que un móvil siga abriendo una versión anterior de la interfaz.
-const CACHE = "aegis-v2";
+const CACHE = "aegis-v3";
 const SHELL = [AT("/"), AT("/icon.svg"), AT("/manifest.webmanifest")];
 
 self.addEventListener("install", (event) => {
