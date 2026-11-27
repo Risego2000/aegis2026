@@ -20,8 +20,8 @@ const AT = (path) => `${BASE}${path}`;
 
 // Súbelo al cambiar el armazón: activate borra las cachés antiguas y evita
 // que un móvil siga abriendo una versión anterior de la interfaz.
-const CACHE = "aegis-v3";
-const SHELL = [AT("/"), AT("/icon.svg"), AT("/manifest.webmanifest")];
+const CACHE = "aegis-v4";
+const SHELL = [AT("/"), AT("/icon.svg")];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -43,6 +43,8 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/ws/")) return;
+  // El manifest puede cambiar de rutas entre publicaciones de GitHub Pages.
+  if (url.pathname === AT("/manifest.webmanifest")) return;
 
   // Navegación: red primero (para tener la última versión), caché si falla.
   if (req.mode === "navigate") {
